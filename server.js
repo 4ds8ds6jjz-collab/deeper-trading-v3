@@ -333,9 +333,9 @@ const signalQuality = direction === "WAIT"
       takeProfit2: takeProfit2 === null ? null : Number(takeProfit2.toFixed(2)),
       riskReward: direction === "WAIT" ? null : "1:2",
       reason: direction === "BUY"
-        ? "EMA9 above EMA20 and RSI above 55"
+       ? `EMA9 above EMA20 and RSI above ${adaptiveSettings.rsiBuy}`
         : direction === "SELL"
-        ? "EMA9 below EMA20 and RSI below 45"
+        ? `EMA9 below EMA20 and RSI below ${adaptiveSettings.rsiSell}`
         : "Trend and momentum confirmation missing",
       note: "Indicative technical setup, not a verified prediction"
     });
