@@ -201,7 +201,10 @@ app.get("/api/analysis", async (req, res) => {
       `${baseUrl}/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}`
     );
 
-    if (!response.ok) throw new Error("Candle API failed");
+    if (!response.ok) {
+  const details = await response.text();
+  throw new Error(`Candle API failed (${response.status}): ${details.slice(0, 200)}`);
+}
 
     const data = await response.json();
     const candles = data.candles || [];
