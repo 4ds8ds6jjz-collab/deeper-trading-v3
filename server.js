@@ -293,7 +293,10 @@ const signalQuality = direction === "WAIT"
   : volumeRatio >= 1.2 &&
     (direction === "BUY" ? rsi < 70 : rsi > 30)
   ? "STRONG"
-  : "EARLY";
+: direction === "BUY" && rsi >= 70 ||
+  direction === "SELL" && rsi <= 30
+? "OVEREXTENDED"
+: "EARLY";
 
     const entry = direction === "WAIT" ? null : price;
     const stopLoss = direction === "BUY"
