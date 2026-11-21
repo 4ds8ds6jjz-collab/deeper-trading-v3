@@ -269,6 +269,7 @@ const swingLow = Math.min(
 const swingHigh = Math.max(
   ...recentCandles.map(c => c.high)
 );
+console.log("SWING DEBUG", { interval, tradingMode, swingLookback, swingLow, swingHigh });
 const atrRisk = Math.max(
   atr14 * adaptiveSettings.atrMultiplier,
   price * 0.001
