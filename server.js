@@ -227,9 +227,26 @@ app.get("/api/analysis", async (req, res) => {
       ? "SELL"
       : "WAIT";
 
-    const ranges = candles.slice(-14).map(c => c.high - c.low);
-    const averageRange = ranges.reduce((a, b) => a + b, 0) / ranges.length;
-    const risk = Math.max(averageRange * 1.5, price * 0.001);
+    
+const trueRanges = [];
+
+for (let i = 1; i < candles.length; i++) {
+  const current = candles[i];
+  const previousClose = candles[i - 1].close;
+
+  const trueRange = Math.max(
+    current.high - current.low,
+    Math.abs(current.high - previousClose),
+    Math.abs(current.low - previousClose)
+  );
+
+  trueRanges.push(trueRange);
+}
+
+const atr14 = trueRanges.slice(-14)
+  .reduce((sum, value) => sum + value, 0) / 14;
+
+const risk = Math.max(atr14 * 1.5, price * 0.001);
 
     const entry = direction === "WAIT" ? null : price;
     const stopLoss = direction === "BUY"
