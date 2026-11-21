@@ -265,6 +265,19 @@ const risk = Math.max(
   price * 0.001
 );
 
+const recentVolumes = candles.slice(-21, -1)
+  .map(c => Number(c.volume));
+
+const averageVolume = recentVolumes.reduce(
+  (sum, volume) => sum + volume, 0
+) / recentVolumes.length;
+
+const currentVolume = Number(candles.at(-1).volume);
+
+const volumeRatio = averageVolume > 0
+  ? currentVolume / averageVolume
+  : null;
+
     const entry = direction === "WAIT" ? null : price;
     const stopLoss = direction === "BUY"
       ? price - risk
