@@ -286,6 +286,15 @@ const volumeStrength = volumeRatio === null
   ? "NORMAL"
   : "LOW";
 
+const signalQuality = direction === "WAIT"
+  ? "WAIT"
+  : volumeRatio === null
+  ? "UNCONFIRMED"
+  : volumeRatio >= 1.2 &&
+    (direction === "BUY" ? rsi < 70 : rsi > 30)
+  ? "STRONG"
+  : "EARLY";
+
     const entry = direction === "WAIT" ? null : price;
     const stopLoss = direction === "BUY"
       ? price - risk
@@ -317,6 +326,7 @@ const volumeStrength = volumeRatio === null
       rsi: Number(rsi.toFixed(2)),
       volumeRatio: volumeRatio === null ? null : Number(volumeRatio.toFixed(2)),
       volumeStrength,
+      signalQuality,
       entry: entry === null ? null : Number(entry.toFixed(2)),
       stopLoss: stopLoss === null ? null : Number(stopLoss.toFixed(2)),
       takeProfit1: takeProfit1 === null ? null : Number(takeProfit1.toFixed(2)),
