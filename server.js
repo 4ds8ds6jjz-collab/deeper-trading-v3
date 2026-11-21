@@ -169,6 +169,111 @@ app.get("/api/candles", async (req, res) => {
   }
 });
 
+function calculateEMA(values, period) {
+  const k = 2 / (period + 1);
+  let result = values[0];
+  for (let i = 1; i < values.length; i++) {
+    result = values[i] * k + result * (1 - k);
+  }
+  return result;
+}
+
+function calculateRSI(values, period = 14) {
+  if (values.length <= period) return null;
+  let gains = 0, losses = 0;
+  for (let i = values.length - period; i < values.length; i++) {
+    const change = values[i] - values[i - 1];
+    gains += Math.max(change, 0);
+    losses += Math.max(-change, 0);
+  }
+  if (gains === 0 && losses === 0) return 50;
+  if (losses === 0) return 100;
+  return 100 - 100 / (1 + gains / losses);
+}
+
+app.get("/api/analysis", async (req, res) => {
+  try {
+    const symbol = req.query.symbol || "BTCUSDT";
+    const interval = req.query.interval || "15m";
+
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const response = await fetch(
+      `${baseUrl}/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}`
+    );
+
+    if (!response.ok) throw new Error("Candle API failed");
+
+    const data = await response.json();
+    const candles = data.candles || [];
+
+    if (candles.length < 25) {
+      return res.status(400).json({
+        error: "Not enough candle history"
+      });
+    }
+
+    const closes = candles.map(c => c.close);
+    const price = closes.at(-1);
+    const ema9 = calculateEMA(closes, 9);
+    const ema20 = calculateEMA(closes, 20);
+    const rsi = calculateRSI(closes);
+
+    const direction = ema9 > ema20 && rsi > 55
+      ? "BUY"
+      : ema9 < ema20 && rsi < 45
+      ? "SELL"
+      : "WAIT";
+
+    const ranges = candles.slice(-14).map(c => c.high - c.low);
+    const averageRange = ranges.reduce((a, b) => a + b, 0) / ranges.length;
+    const risk = Math.max(averageRange * 1.5, price * 0.001);
+
+    const entry = direction === "WAIT" ? null : price;
+    const stopLoss = direction === "BUY"
+      ? price - risk
+      : direction === "SELL"
+      ? price + risk
+      : null;
+
+    const takeProfit1 = direction === "BUY"
+      ? price + risk * 1.5
+      : direction === "SELL"
+      ? price - risk * 1.5
+      : null;
+
+    const takeProfit2 = direction === "BUY"
+      ? price + risk * 2
+      : direction === "SELL"
+      ? price - risk * 2
+      : null;
+
+    res.json({
+      symbol,
+      interval,
+      source: data.source,
+      status: direction === "WAIT" ? "NO TRADE" : "CANDIDATE SETUP",
+      direction,
+      price: Number(price.toFixed(2)),
+      ema9: Number(ema9.toFixed(2)),
+      ema20: Number(ema20.toFixed(2)),
+      rsi: Number(rsi.toFixed(2)),
+      entry: entry === null ? null : Number(entry.toFixed(2)),
+      stopLoss: stopLoss === null ? null : Number(stopLoss.toFixed(2)),
+      takeProfit1: takeProfit1 === null ? null : Number(takeProfit1.toFixed(2)),
+      takeProfit2: takeProfit2 === null ? null : Number(takeProfit2.toFixed(2)),
+      riskReward: direction === "WAIT" ? null : "1:2",
+      reason: direction === "BUY"
+        ? "EMA9 above EMA20 and RSI above 55"
+        : direction === "SELL"
+        ? "EMA9 below EMA20 and RSI below 45"
+        : "Trend and momentum confirmation missing",
+      note: "Indicative technical setup, not a verified prediction"
+    });
+  } catch (error) {
+    res.status(503).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`DTI V3 running on port ${PORT}`);
 });
