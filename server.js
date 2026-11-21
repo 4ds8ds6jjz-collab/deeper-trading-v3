@@ -268,10 +268,18 @@ const swingLow = Math.min(
 const swingHigh = Math.max(
   ...recentCandles.map(c => c.high)
 );
-const risk = Math.max(
+const atrRisk = Math.max(
   atr14 * adaptiveSettings.atrMultiplier,
   price * 0.001
 );
+
+const swingBuffer = atr14 * 0.2;
+
+const risk = direction === "BUY"
+  ? Math.max(atrRisk, price - swingLow + swingBuffer)
+  : direction === "SELL"
+  ? Math.max(atrRisk, swingHigh - price + swingBuffer)
+  : atrRisk;
 
 const recentVolumes = candles.slice(-21, -1)
   .map(c => Number(c.volume));
