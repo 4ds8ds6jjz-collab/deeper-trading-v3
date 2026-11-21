@@ -124,7 +124,7 @@ app.get("/api/candles", async (req, res) => {
       "granularity",
       String(granularity)
     );
-
+console.log("ANALYSIS PARAMS:", { symbol, interval });
     const response = await fetch(url, {
       headers: {
         "User-Agent": "DTI-V3/1.0",
