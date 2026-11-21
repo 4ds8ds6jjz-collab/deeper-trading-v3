@@ -75,10 +75,50 @@
       </div>
     </section>
 
-    <section class="card">
-      <h2>AI Trading Analysis</h2>
-      <p class="muted">Coming next: BUY / SELL setups, entry, stop loss and targets.</p>
-    </section>
+   <section class="card">
+  <h2>⚡ AI Trading Analysis</h2>
+
+  <div class="row">
+    <span>Timeframe</span>
+    <select id="timeframe">
+      <option value="5m">5 Minutes</option>
+      <option value="15m" selected>15 Minutes</option>
+      <option value="1h">1 Hour</option>
+    </select>
+  </div>
+
+  <h2 id="tradeDirection">Loading analysis...</h2>
+
+  <div class="row">
+    <span>Entry</span>
+    <strong id="entry">—</strong>
+  </div>
+
+  <div class="row">
+    <span>Stop Loss</span>
+    <strong id="stopLoss">—</strong>
+  </div>
+
+  <div class="row">
+    <span>Target 1</span>
+    <strong id="target1">—</strong>
+  </div>
+
+  <div class="row">
+    <span>Target 2</span>
+    <strong id="target2">—</strong>
+  </div>
+
+  <div class="row">
+    <span>Risk / Reward</span>
+    <strong id="riskReward">—</strong>
+  </div>
+
+  <p id="tradeReason" class="muted"></p>
+  <p id="tradeNote" class="muted"></p>
+
+  <button onclick="loadAnalysis()">Refresh Analysis</button>
+</section>
   </main>
 
   <script>
@@ -117,7 +157,88 @@
 
     document.getElementById("symbol")
       .addEventListener("change", loadPrice);
+    async function loadAnalysis() {
+      const symbol = document.getElementById("symbol").value;
+      const interval = document.getElementById("timeframe").value;
 
+      const directionEl = document.getElementById("tradeDirection");
+      directionEl.textContent = "Analyzing market...";
+      directionEl.style.color = "#f1f5f9";
+
+      const ids = ["entry", "stopLoss", "target1", "target2", "riskReward"];
+      ids.forEach(id => {
+        document.getElementById(id).textContent = "—";
+      });
+
+      document.getElementById("tradeReason").textContent = "";
+      document.getElementById("tradeNote").textContent = "";
+
+      try {
+        const response = await fetch(
+          "/api/signal?symbol=" + encodeURIComponent(symbol) +
+          "&interval=" + encodeURIComponent(interval)
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Analysis unavailable");
+        }
+
+        const format = value =>
+          Number.isFinite(Number(value)) && value != null
+            ? "$" + Number(value).toLocaleString("en-US", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })
+            : "—";
+
+        const direction = data.direction || "WAIT";
+
+        directionEl.textContent =
+          direction + " · " + (data.status || "Analysis");
+
+        directionEl.style.color =
+          direction === "BUY" ? "#4ade80" :
+          direction === "SELL" ? "#fb7185" :
+          "#facc15";
+
+        document.getElementById("entry").textContent =
+          format(data.entry);
+
+        document.getElementById("stopLoss").textContent =
+          format(data.stopLoss);
+
+        document.getElementById("target1").textContent =
+          format(data.takeProfit1);
+
+        document.getElementById("target2").textContent =
+          format(data.takeProfit2);
+
+        document.getElementById("riskReward").textContent =
+          data.riskReward || "—";
+
+        document.getElementById("tradeReason").textContent =
+          "Reason: " + (data.reason || "Not available");
+
+        document.getElementById("tradeNote").textContent =
+          data.note || "Indicative setup only. Not a confirmed trade.";
+
+      } catch (error) {
+        directionEl.textContent = "Analysis unavailable";
+        document.getElementById("tradeReason").textContent =
+          error.message;
+      }
+    }
+
+    document.getElementById("symbol")
+      .addEventListener("change", loadAnalysis);
+
+    document.getElementById("timeframe")
+      .addEventListener("change", loadAnalysis);
+
+    loadAnalysis();
+    setInterval(loadAnalysis, 30000);
     loadPrice();
     setInterval(loadPrice, 30000);
   </script>
