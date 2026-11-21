@@ -220,12 +220,26 @@ app.get("/api/analysis", async (req, res) => {
     const ema9 = calculateEMA(closes, 9);
     const ema20 = calculateEMA(closes, 20);
     const rsi = calculateRSI(closes);
+const tradingMode = ["1m", "5m", "15m"].includes(interval)
+  ? "SCALPING"
+  : "INTRADAY";
 
-    const direction = ema9 > ema20 && rsi > 55
-      ? "BUY"
-      : ema9 < ema20 && rsi < 45
-      ? "SELL"
-      : "WAIT";
+const adaptiveSettings = tradingMode === "SCALPING"
+  ? {
+      rsiBuy: 53,
+      rsiSell: 47,
+      atrMultiplier: 1.3
+    }
+  : {
+      rsiBuy: 55,
+      rsiSell: 45,
+      atrMultiplier: 1.8
+    };
+    const direction = ema9 > ema20 && rsi > adaptiveSettings.rsiBuy
+  ? "BUY"
+  : ema9 < ema20 && rsi < adaptiveSettings.rsiSell
+  ? "SELL"
+  : "WAIT";
 
     
 const trueRanges = [];
@@ -246,7 +260,10 @@ for (let i = 1; i < candles.length; i++) {
 const atr14 = trueRanges.slice(-14)
   .reduce((sum, value) => sum + value, 0) / 14;
 
-const risk = Math.max(atr14 * 1.5, price * 0.001);
+const risk = Math.max(
+  atr14 * adaptiveSettings.atrMultiplier,
+  price * 0.001
+);
 
     const entry = direction === "WAIT" ? null : price;
     const stopLoss = direction === "BUY"
