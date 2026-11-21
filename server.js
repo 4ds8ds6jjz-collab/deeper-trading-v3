@@ -259,7 +259,15 @@ for (let i = 1; i < candles.length; i++) {
 
 const atr14 = trueRanges.slice(-14)
   .reduce((sum, value) => sum + value, 0) / 14;
+const recentCandles = candles.slice(-11, -1);
 
+const swingLow = Math.min(
+  ...recentCandles.map(c => c.low)
+);
+
+const swingHigh = Math.max(
+  ...recentCandles.map(c => c.high)
+);
 const risk = Math.max(
   atr14 * adaptiveSettings.atrMultiplier,
   price * 0.001
