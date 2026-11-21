@@ -1,0 +1,125 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080d15">
+  <title>Deeper Trading Intelligence V3</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #080d15;
+      color: #f1f5f9;
+      font-family: Arial, sans-serif;
+    }
+    header {
+      padding: 22px 18px;
+      border-bottom: 1px solid #263244;
+    }
+    h1 { font-size: 22px; margin: 0; }
+    .subtitle { color: #94a3b8; margin-top: 8px; }
+    main { padding: 18px; max-width: 900px; margin: auto; }
+    .card {
+      background: #121b29;
+      border: 1px solid #263244;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    select, button {
+      background: #1e293b;
+      color: white;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 15px;
+    }
+    button { cursor: pointer; }
+    .price { font-size: 32px; font-weight: bold; margin: 18px 0; }
+    .muted { color: #94a3b8; }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚡ Deeper Trading Intelligence</h1>
+    <div class="subtitle">V3 · Crypto Market Dashboard</div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Live Market</h2>
+      <select id="symbol">
+        <option value="BTCUSDT">BTC / USDT</option>
+        <option value="ETHUSDT">ETH / USDT</option>
+        <option value="PAXGUSDT">PAXG / USDT</option>
+      </select>
+      <button onclick="loadPrice()">Refresh</button>
+
+      <div id="price" class="price">Loading...</div>
+      <div id="status" class="muted">Connecting to market data...</div>
+      <div class="row">
+        <span>Bid</span>
+        <strong id="bid">—</strong>
+      </div>
+      <div class="row">
+        <span>Ask</span>
+        <strong id="ask">—</strong>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>AI Trading Analysis</h2>
+      <p class="muted">Coming next: BUY / SELL setups, entry, stop loss and targets.</p>
+    </section>
+  </main>
+
+  <script>
+    async function loadPrice() {
+      const symbol = document.getElementById("symbol").value;
+      const priceEl = document.getElementById("price");
+      const statusEl = document.getElementById("status");
+
+      try {
+        const response = await fetch(
+          "/api/price?symbol=" + encodeURIComponent(symbol)
+        );
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Request failed");
+        }
+
+        const format = value =>
+          Number(value).toLocaleString("en-US", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          });
+
+        priceEl.textContent = "$" + format(data.price);
+        document.getElementById("bid").textContent =
+          "$" + format(data.bid);
+        document.getElementById("ask").textContent =
+          "$" + format(data.ask);
+        statusEl.textContent = "Source: Coinbase · " +
+          (data.timestamp || "Latest quote");
+      } catch (error) {
+        priceEl.textContent = "Unavailable";
+        statusEl.textContent = error.message;
+      }
+    }
+
+    document.getElementById("symbol")
+      .addEventListener("change", loadPrice);
+
+    loadPrice();
+    setInterval(loadPrice, 30000);
+  </script>
+</body>
+</html>
