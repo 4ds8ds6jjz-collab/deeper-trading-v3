@@ -259,7 +259,8 @@ for (let i = 1; i < candles.length; i++) {
 
 const atr14 = trueRanges.slice(-14)
   .reduce((sum, value) => sum + value, 0) / 14;
-const recentCandles = candles.slice(-11, -1);
+const swingLookback = tradingMode === "SCALPING" ? 10 : 20;
+const recentCandles = candles.slice(-(swingLookback + 1), -1);
 
 const swingLow = Math.min(
   ...recentCandles.map(c => c.low)
