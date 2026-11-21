@@ -278,6 +278,14 @@ const volumeRatio = averageVolume > 0
   ? currentVolume / averageVolume
   : null;
 
+const volumeStrength = volumeRatio === null
+  ? "UNKNOWN"
+  : volumeRatio >= 1.5
+  ? "HIGH"
+  : volumeRatio >= 1.0
+  ? "NORMAL"
+  : "LOW";
+
     const entry = direction === "WAIT" ? null : price;
     const stopLoss = direction === "BUY"
       ? price - risk
@@ -308,6 +316,7 @@ const volumeRatio = averageVolume > 0
       ema20: Number(ema20.toFixed(2)),
       rsi: Number(rsi.toFixed(2)),
       volumeRatio: volumeRatio === null ? null : Number(volumeRatio.toFixed(2)),
+      volumeStrength,
       entry: entry === null ? null : Number(entry.toFixed(2)),
       stopLoss: stopLoss === null ? null : Number(stopLoss.toFixed(2)),
       takeProfit1: takeProfit1 === null ? null : Number(takeProfit1.toFixed(2)),
