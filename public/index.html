@@ -56,32 +56,20 @@
   <main>
     <section class="card">
       <h2>Live Market</h2>
-      <select id="symbol">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:16px;">
+      <select id="symbol" style="width:130px;max-width:130px;flex-shrink:0;font-size:13px;padding:9px 6px;">
         <option value="BTCUSDT">BTC / USDT</option>
         <option value="ETHUSDT">ETH / USDT</option>
         <option value="PAXGUSDT">PAXG / USDT</option>
       </select>
-      <button onclick="loadPrice()">Refresh</button>
-
-      <div id="price" class="price">Loading...</div>
-      <div id="status" class="muted">Connecting to market data...</div>
-      <div class="row">
-        <span>Bid</span>
-        <strong id="bid">—</strong>
-      </div>
-      <div class="row">
-        <span>Ask</span>
-        <strong id="ask">—</strong>
-      </div>
-      <div class="row">
-  <span>Timeframe</span>
-  <select id="timeframe">
-    <option value="5m">5 Minutes</option>
-    <option value="15m" selected>15 Minutes</option>
-    <option value="1h">1 Hour</option>
-    <option value="4h">4 Hours</option>
-    <option value="1d">1 Day</option>
-  </select>
+      
+      <select id="timeframe" style="width:86px;max-width:86px;flex-shrink:0;font-size:13px;padding:9px 6px;">
+  <option value="5m">5m</option>
+  <option value="15m" selected>15m</option>
+  <option value="1h">1H</option>
+  <option value="4h">4H</option>
+  <option value="1d">1D</option>
+</select>
 </div>
       <div id="tradingChart" style="width:100%;height:350px;margin:20px 0 12px;border-radius:14px;overflow:hidden;background:#101827;">
   <div id="chartLoading" style="padding:20px;color:#94a3b8;">
@@ -130,11 +118,51 @@
   <script>
   let candleChart;
 let candleSeries;
+let tradePriceLines = [];
+
+function updateTradeLines(data) {
+  if (!candleSeries) return;
+
+  tradePriceLines.forEach(line => {
+    candleSeries.removePriceLine(line);
+  });
+  tradePriceLines = [];
+
+  const levels = [
+    { price: data.entry, title: "ENTRY", color: "#38bdf8" },
+    { price: data.stopLoss, title: "STOP LOSS", color: "#ef4444" },
+    { price: data.takeProfit1, title: "TP1", color: "#22c55e" },
+    { price: data.takeProfit2, title: "TP2", color: "#16a34a" }
+  ];
+
+  levels.forEach(level => {
+    const price = Number(level.price);
+
+    if (Number.isFinite(price) && price > 0) {
+      const line = candleSeries.createPriceLine({
+        price: price,
+        color: level.color,
+        lineWidth: 2,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: level.title
+      });
+
+      tradePriceLines.push(line);
+    }
+  });
+}
 
 async function loadChart() {
   const symbol = document.getElementById("symbol").value;
   const interval = document.getElementById("timeframe").value;
   const container = document.getElementById("tradingChart");
+if (candleSeries) {
+  tradePriceLines.forEach(line => {
+    candleSeries.removePriceLine(line);
+  });
+  tradePriceLines = [];
+}
 
   try {
     const response = await fetch(
@@ -194,6 +222,7 @@ async function loadChart() {
 
     candleSeries.setData(candles);
     candleChart.timeScale().fitContent();
+    loadAnalysis();
 requestAnimationFrame(() => {
   candleChart.applyOptions({
     width: container.clientWidth,
@@ -308,6 +337,8 @@ requestAnimationFrame(() => {
 
         document.getElementById("tradeNote").textContent =
           data.note || "Indicative setup only. Not a confirmed trade.";
+          
+updateTradeLines(data);
 
       } catch (error) {
         directionEl.textContent = "Analysis unavailable";
@@ -324,8 +355,7 @@ requestAnimationFrame(() => {
 
     loadAnalysis();
     setInterval(loadAnalysis, 30000);
-    loadPrice();
-    setInterval(loadPrice, 30000);
+    
     document.getElementById("symbol").addEventListener("change", loadChart);
 document.getElementById("timeframe").addEventListener("change", loadChart);
 
