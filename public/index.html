@@ -228,8 +228,9 @@ requestAnimationFrame(() => {
     width: container.clientWidth,
     height: 350
   });
-  
-  } catch (error) {
+});
+
+} catch (error) {
     if (!candleChart) {
       container.textContent = "Chart unavailable: " + error.message;
     }
