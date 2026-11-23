@@ -99,7 +99,10 @@
 <div id="signalQuality" style="font-size:16px;font-weight:700;color:#fbbf24;margin:12px 0 20px;">
   ⚡ Signal Quality: Loading...
 </div>
-
+<div id="breakoutStatus"
+     style="font-size:16px;font-weight:bold;color:#facc15;margin:12px 0;">
+  ⏳ WAIT FOR BREAKOUT / BREAKDOWN
+</div>
 <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin:14px 0 10px;">
 
   <div style="background:#172235;border:1px solid #26364c;border-radius:9px;padding:10px 3px;text-align:center;min-width:0;">
@@ -424,6 +427,18 @@ if (qualityEl) {
     quality === "EARLY" ? "#facc15" :
     "#94a3b8";
 }     
+const breakoutEl = document.getElementById("breakoutStatus");
+
+if (breakoutEl) {
+  const status = data.breakoutStatus || "WAIT FOR BREAKOUT / BREAKDOWN";
+
+  breakoutEl.textContent = "⚡ " + status;
+
+  breakoutEl.style.color =
+    status === "BREAKOUT CONFIRMED" ? "#4ade80" :
+    status === "BREAKDOWN CONFIRMED" ? "#fb7185" :
+    "#facc15";
+}
 updateTradeLines(data);
 
       } catch (error) {
