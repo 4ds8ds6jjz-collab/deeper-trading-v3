@@ -195,7 +195,7 @@ app.get("/api/analysis", async (req, res) => {
   try {
     const symbol = req.query.symbol || "BTCUSDT";
     const interval = req.query.interval || "15m";
-    const mode = req.query.mode === "TRADE_NOW" ? "now" : "best";
+    const mode = String(req.query.mode || "BEST_SETUP").toUpperCase();
 
     const baseUrl = `http://127.0.0.1:${process.env.PORT || 3000}`;
     const response = await fetch(
