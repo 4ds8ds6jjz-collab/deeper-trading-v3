@@ -304,17 +304,7 @@ const volumeStrength = volumeRatio === null
   ? "NORMAL"
   : "LOW";
 
-const signalQuality = direction === "WAIT"
-  ? "WAIT"
-  : volumeRatio === null
-  ? "UNCONFIRMED"
-  : volumeRatio >= 1.2 &&
-    (direction === "BUY" ? rsi < 70 : rsi > 30)
-  ? "STRONG"
-: direction === "BUY" && rsi >= 70 ||
-  direction === "SELL" && rsi <= 30
-? "OVEREXTENDED"
-: "EARLY";
+
 const breakoutLevel = swingHigh;
 const breakdownLevel = swingLow;
 
@@ -342,6 +332,17 @@ const breakoutStatus =
       ? "SELL"
       : "WAIT";
 }
+const signalQuality = direction === "WAIT"
+  ? "WAIT"
+  : volumeRatio === null
+  ? "UNCONFIRMED"
+  : volumeRatio >= 1.2 &&
+    (direction === "BUY" ? rsi < 70 : rsi > 30)
+  ? "STRONG"
+: direction === "BUY" && rsi >= 70 ||
+  direction === "SELL" && rsi <= 30
+? "OVEREXTENDED"
+: "EARLY";
 const longEntry = buyTrigger;
 const longSL = longEntry - atr14 * 1.5;
 const longTP1 = longEntry + (longEntry - longSL) * 1.5;
