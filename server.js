@@ -196,7 +196,7 @@ app.get("/api/analysis", async (req, res) => {
     const symbol = req.query.symbol || "BTCUSDT";
     const interval = req.query.interval || "15m";
     const mode = req.query.mode === "now" ? "now" : "best";
-const mode = req.query.mode === "now" ? "now" : "best";
+
     const baseUrl = `http://127.0.0.1:${process.env.PORT || 3000}`;
     const response = await fetch(
       `${baseUrl}/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}`
