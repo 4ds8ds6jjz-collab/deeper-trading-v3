@@ -195,7 +195,7 @@ app.get("/api/analysis", async (req, res) => {
   try {
     const symbol = req.query.symbol || "BTCUSDT";
     const interval = req.query.interval || "15m";
-    const mode = req.query.mode === "now" ? "now" : "best";
+    const mode = req.query.mode === "TRADE_NOW" ? "now" : "best";
 
     const baseUrl = `http://127.0.0.1:${process.env.PORT || 3000}`;
     const response = await fetch(
@@ -236,12 +236,15 @@ const adaptiveSettings = tradingMode === "SCALPING"
       rsiSell: 45,
       atrMultiplier: 1.8
     };
-    const direction = ema9 > ema20 && rsi > adaptiveSettings.rsiBuy
+    let direction = ema9 > ema20 && rsi > adaptiveSettings.rsiBuy
   ? "BUY"
   : ema9 < ema20 && rsi < adaptiveSettings.rsiSell
   ? "SELL"
   : "WAIT";
-
+  
+if (mode === "BEST_SETUP") {
+  direction = "WAIT";
+}
     
 const trueRanges = [];
 
@@ -329,6 +332,13 @@ const breakoutStatus =
     : price < sellTrigger
     ? "BREAKDOWN CONFIRMED"
     : "WAIT FOR BREAKOUT / BREAKDOWN";
+    if (mode === "BEST_SETUP") {
+  direction = price > buyTrigger
+    ? "BUY"
+    : price < sellTrigger
+    ? "SELL"
+    : "WAIT";
+}
     const entry = direction === "WAIT" ? null : price;
     const stopLoss = direction === "BUY"
       ? price - risk
