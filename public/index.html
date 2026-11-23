@@ -363,7 +363,8 @@ async function loadAnalysis(mode = analysisMode) {
       try {
         const response = await fetch(
           "/api/analysis?symbol=" + encodeURIComponent(symbol) +
-          "&interval=" + encodeURIComponent(interval)
+          "&interval=" + encodeURIComponent(interval) +
+"&mode=" + encodeURIComponent(analysisMode)
         );
 
         const data = await response.json();
