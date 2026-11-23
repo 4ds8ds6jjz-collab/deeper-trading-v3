@@ -134,6 +134,19 @@
 
 
   <p id="tradeReason" class="muted"></p>
+  <div id="bestSetupPlans" style="display:none; margin:20px 0;">
+
+  <div style="background:#172b25; padding:16px; border-radius:14px; margin-bottom:12px;">
+    <h3 style="color:#4ade80;">🟢 LONG — BREAKOUT PLAN</h3>
+    <div id="longPlanDetails">Loading...</div>
+  </div>
+
+  <div style="background:#302126; padding:16px; border-radius:14px;">
+    <h3 style="color:#fb7185;">🔴 SHORT — BREAKDOWN PLAN</h3>
+    <div id="shortPlanDetails">Loading...</div>
+  </div>
+
+</div>
   <p id="tradeNote" class="muted"></p>
 
   <button onclick="loadAnalysis()">Refresh Analysis</button>
@@ -383,7 +396,34 @@ async function loadAnalysis(mode = analysisMode) {
                 maximumFractionDigits: 2
               })
             : "—";
+const plansBox = document.getElementById("bestSetupPlans");
+const longBox = document.getElementById("longPlanDetails");
+const shortBox = document.getElementById("shortPlanDetails");
 
+if (analysisMode === "BEST_SETUP" && data.longPlan && data.shortPlan) {
+  plansBox.style.display = "block";
+
+  const long = data.longPlan;
+  const short = data.shortPlan;
+
+  longBox.innerHTML = `
+    <p>📍 Buy above: ${format(long.entry)}</p>
+    <p>🛑 Stop Loss: ${format(long.stopLoss)}</p>
+    <p>🎯 Target 1: ${format(long.takeProfit1)}</p>
+    <p>🎯 Target 2: ${format(long.takeProfit2)}</p>
+    <p>⏳ Condition: ${long.condition}</p>
+  `;
+
+  shortBox.innerHTML = `
+    <p>📍 Sell below: ${format(short.entry)}</p>
+    <p>🛑 Stop Loss: ${format(short.stopLoss)}</p>
+    <p>🎯 Target 1: ${format(short.takeProfit1)}</p>
+    <p>🎯 Target 2: ${format(short.takeProfit2)}</p>
+    <p>⏳ Condition: ${short.condition}</p>
+  `;
+} else {
+  plansBox.style.display = "none";
+}
         const direction = data.direction || "WAIT";
 
         directionEl.textContent =
