@@ -613,17 +613,21 @@ const setupCondition = document.getElementById("setupCondition");
 const setupDetails = document.getElementById("setupDetails");
 
 
-const selectedPlan =
-  data.direction === "BUY" ? data.longPlan :
-  data.direction === "SELL" ? data.shortPlan :
-  data.longPlan && data.shortPlan
-    ? (Number(data.ema9) > Number(data.ema20)
-        ? data.longPlan
-        : Number(data.ema9) < Number(data.ema20)
-          ? data.shortPlan
-          : null)
-    : null;
 
+const selectedPlan =
+  analysisMode === "TRADE_NOW" && data.direction !== "WAIT"
+    ? data
+    : data.direction === "BUY"
+      ? data.longPlan
+      : data.direction === "SELL"
+        ? data.shortPlan
+        : data.longPlan && data.shortPlan
+          ? Number(data.ema9) > Number(data.ema20)
+            ? data.longPlan
+            : Number(data.ema9) < Number(data.ema20)
+              ? data.shortPlan
+              : null
+          : null;
 
 if (selectedPlan) {
   plansBox.style.display = "block";
@@ -647,7 +651,16 @@ setupEntry.style.color = isPending
   ? "#facc15"
   : isBuy ? "#4ade80" : "#fb7185";
 
-  setupCondition.textContent = selectedPlan.condition || "";
+  
+setupCondition.textContent =
+  analysisMode === "TRADE_NOW" && !isPending
+    ? "⚡ Current market candidate · Entry " +
+      format(selectedPlan.entry) +
+      " · Signal quality: " +
+      (data.signalQuality || "UNCONFIRMED")
+    : "⏳ Confirmation pending: " +
+      (selectedPlan.condition || "Wait for price confirmation");
+
 
   
 setupDetails.innerHTML = `
@@ -669,8 +682,10 @@ setupDetails.innerHTML = `
 
         const direction = data.direction || "WAIT";
         
-const displayPlan = selectedPlan || data;
-
+const displayPlan =
+  analysisMode === "TRADE_NOW" && data.direction !== "WAIT"
+    ? data
+    : selectedPlan || data;
 
         directionEl.textContent =
           direction + " · " + (data.status || "Analysis");
