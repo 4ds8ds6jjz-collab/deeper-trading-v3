@@ -129,6 +129,37 @@
 let candleSeries;
 let tradePriceLines = [];
 
+function updateCandleCountdown() {
+  const timeframe = document.getElementById("timeframe").value;
+  const display = document.getElementById("candleCountdown");
+
+  const seconds = {
+    "1m": 60,
+    "5m": 300,
+    "15m": 900,
+    "1h": 3600,
+    "4h": 14400,
+    "1d": 86400
+  };
+
+  const duration = seconds[timeframe] || 300;
+  const now = Math.floor(Date.now() / 1000);
+  const remaining = duration - (now % duration);
+
+  const hours = Math.floor(remaining / 3600);
+  const minutes = Math.floor((remaining % 3600) / 60);
+  const secs = remaining % 60;
+
+  const pad = n => String(n).padStart(2, "0");
+
+  display.textContent = "⏳ Candle closes in " +
+    (hours > 0 ? pad(hours) + ":" : "") +
+    pad(minutes) + ":" + pad(secs);
+}
+
+updateCandleCountdown();
+setInterval(updateCandleCountdown, 1000);
+
 function updateTradeLines(data) {
   if (!candleSeries) return;
 
