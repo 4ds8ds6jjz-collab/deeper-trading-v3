@@ -241,10 +241,6 @@ const adaptiveSettings = tradingMode === "SCALPING"
   : ema9 < ema20 && rsi < adaptiveSettings.rsiSell
   ? "SELL"
   : "WAIT";
-  
-if (mode === "BEST_SETUP") {
-  direction = "WAIT";
-}
     
 const trueRanges = [];
 
@@ -333,11 +329,18 @@ const breakoutStatus =
     ? "BREAKDOWN CONFIRMED"
     : "WAIT FOR BREAKOUT / BREAKDOWN";
     if (mode === "BEST_SETUP") {
-  direction = price > buyTrigger
-    ? "BUY"
-    : price < sellTrigger
-    ? "SELL"
-    : "WAIT";
+  direction =
+    price > buyTrigger &&
+    ema9 > ema20 &&
+    rsi > adaptiveSettings.rsiBuy &&
+    volumeRatio >= 1.2
+      ? "BUY"
+      : price < sellTrigger &&
+        ema9 < ema20 &&
+        rsi < adaptiveSettings.rsiSell &&
+        volumeRatio >= 1.2
+      ? "SELL"
+      : "WAIT";
 }
     const entry = direction === "WAIT" ? null : price;
     const stopLoss = direction === "BUY"
