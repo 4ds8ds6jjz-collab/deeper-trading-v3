@@ -195,6 +195,7 @@ app.get("/api/analysis", async (req, res) => {
   try {
     const symbol = req.query.symbol || "BTCUSDT";
     const interval = req.query.interval || "15m";
+    const mode = req.query.mode === "now" ? "now" : "best";
 const mode = req.query.mode === "now" ? "now" : "best";
     const baseUrl = `http://127.0.0.1:${process.env.PORT || 3000}`;
     const response = await fetch(
@@ -315,7 +316,19 @@ const signalQuality = direction === "WAIT"
   direction === "SELL" && rsi <= 30
 ? "OVEREXTENDED"
 : "EARLY";
+const breakoutLevel = swingHigh;
+const breakdownLevel = swingLow;
 
+const breakoutBuffer = atr14 * 0.1;
+
+const buyTrigger = breakoutLevel + breakoutBuffer;
+const sellTrigger = breakdownLevel - breakoutBuffer;
+const breakoutStatus =
+  price > buyTrigger
+    ? "BREAKOUT CONFIRMED"
+    : price < sellTrigger
+    ? "BREAKDOWN CONFIRMED"
+    : "WAIT FOR BREAKOUT / BREAKDOWN";
     const entry = direction === "WAIT" ? null : price;
     const stopLoss = direction === "BUY"
       ? price - risk
@@ -336,6 +349,11 @@ const signalQuality = direction === "WAIT"
       : null;
 
     res.json({
+      breakoutLevel,
+breakdownLevel,
+buyTrigger,
+sellTrigger,
+breakoutStatus,
       symbol,
       interval,
       source: data.source,
