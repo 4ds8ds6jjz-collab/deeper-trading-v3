@@ -144,18 +144,20 @@
   let candleChart;
 let candleSeries;
 let tradePriceLines = [];
-
+let analysisMode = "BEST_SETUP";
 const bestSetupBtn = document.getElementById("bestSetupBtn");
 const tradeNowBtn = document.getElementById("tradeNowBtn");
 
 bestSetupBtn.addEventListener("click", () => {
   analysisMode = "BEST_SETUP";
+  loadAnalysis();
   bestSetupBtn.style.background = "#2563eb";
   tradeNowBtn.style.background = "#334155";
 });
 
 tradeNowBtn.addEventListener("click", () => {
   analysisMode = "TRADE_NOW";
+  loadAnalysis();
   tradeNowBtn.style.background = "#2563eb";
   bestSetupBtn.style.background = "#334155";
 });
@@ -343,7 +345,6 @@ requestAnimationFrame(() => {
 
     document.getElementById("symbol")
       .addEventListener("change", loadPrice);
-let analysisMode = "best";
 
 async function loadAnalysis(mode = analysisMode) {
   analysisMode = mode;
