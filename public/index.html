@@ -201,6 +201,7 @@ let candleSeries;
 let tradePriceLines = [];
 let tradeZoneOverlay = null;
 let activeTradeZone = null;
+let tradeZoneAnchorTime = null;
 let analysisMode = "BEST_SETUP";
 const bestSetupBtn = document.getElementById("bestSetupBtn");
 const tradeNowBtn = document.getElementById("tradeNowBtn");
@@ -269,6 +270,17 @@ function drawTradeZones(plan) {
 
   if ([entryY, slY, tpY].some(y => y === null)) return;
 
+const anchorX = candleChart.timeScale()
+  .timeToCoordinate(tradeZoneAnchorTime);
+
+if (anchorX === null) return;
+
+const candleWidth = candleChart.timeScale()
+  .options().barSpacing;
+
+const zoneLeft = anchorX;
+const zoneWidth = Math.max(60, candleWidth * 8);
+
   const makeZone = (y1, y2, color) => {
     const box = document.createElement("div");
 
@@ -276,8 +288,8 @@ function drawTradeZones(plan) {
       position: "absolute",
       top: Math.min(y1, y2) + "px",
       height: Math.abs(y2 - y1) + "px",
-      left: "55%",
-      width: "28%",
+      left: zoneLeft + "px",
+width: zoneWidth + "px",
       background: color,
       border: "1px solid " + color,
       borderRadius: "3px"
@@ -430,6 +442,16 @@ container.appendChild(tradeZoneOverlay);
 
     candleSeries.setData(candles);
     
+if (tradeZoneAnchorTime === null && candles.length > 0) {
+  tradeZoneAnchorTime = candles[candles.length - 1].time;
+}
+
+requestAnimationFrame(() => {
+  if (activeTradeZone) {
+    drawTradeZones(activeTradeZone);
+  }
+});
+
 
 if (!window.tradeZoneListenerAdded) {
   candleChart.timeScale().subscribeVisibleLogicalRangeChange(() => {
