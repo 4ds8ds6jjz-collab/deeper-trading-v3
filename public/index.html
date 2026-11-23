@@ -1,12 +1,14 @@
 
 <!DOCTYPE html>
 <html lang="en">
+  
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080d15">
   <title>Deeper Trading Intelligence V3</title>
   
+  <style>
 .analysis-compact {
   padding: 16px;
   border-radius: 14px;
@@ -41,7 +43,6 @@
   font-size: 13px;
 }
 
-  <style>
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -107,6 +108,38 @@
       gap: 12px;
       margin-top: 12px;
     }
+    
+#bestSetupPlans {
+  padding: 12px 14px;
+  margin: 8px 0 !important;
+}
+
+#setupTitle {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+
+#setupSummary {
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 4px 0 8px;
+}
+
+#setupEntry {
+  font-size: 18px;
+  margin: 6px 0;
+}
+
+#setupCondition {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 6px 0;
+}
+
+#bestSetupPlans details {
+  margin-top: 8px;
+}
+
   </style>
 </head>
 <body>
@@ -730,9 +763,8 @@ document.getElementById("riskReward").textContent =
     ? "1:" + (reward / risk).toFixed(2)
     : "—";
 
-
-        document.getElementById("tradeReason").textContent =
-          "Reason: " + (data.reason || "Not available");
+        
+document.getElementById("tradeReason").textContent = "";
 
         document.getElementById("tradeNote").textContent =
           data.note || "Indicative setup only. Not a confirmed trade.";
@@ -754,7 +786,24 @@ const breakoutEl = document.getElementById("breakoutStatus");
 if (breakoutEl) {
   const status = data.breakoutStatus || "WAIT FOR BREAKOUT / BREAKDOWN";
 
-  breakoutEl.textContent = "⚡ " + status;
+  
+const buyLevel = Number(data.buyTrigger);
+const sellLevel = Number(data.sellTrigger);
+
+const bearish = data.direction === "SELL" ||
+  (data.direction === "WAIT" &&
+   Number(data.ema9) < Number(data.ema20));
+
+const bullish = data.direction === "BUY" ||
+  (data.direction === "WAIT" &&
+   Number(data.ema9) > Number(data.ema20));
+
+breakoutEl.textContent = bearish
+  ? "⏳ SELL confirmation below " + format(sellLevel)
+  : bullish
+  ? "⏳ BUY confirmation above " + format(buyLevel)
+  : "⏳ WAIT · No clear direction";
+
 
   breakoutEl.style.color =
     status === "BREAKOUT CONFIRMED" ? "#4ade80" :
