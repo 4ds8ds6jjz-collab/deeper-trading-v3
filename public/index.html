@@ -702,6 +702,7 @@ setupDetails.innerHTML = `
   <p>🎯 Target 1: ${format(selectedPlan.takeProfit1)}</p>
   <p>🎯 Target 2: ${format(selectedPlan.takeProfit2)}</p>
   <hr style="border:0;border-top:1px solid #334155;margin:12px 0;">
+  <p>📊 Market Structure: ${data.marketStructure || "UNKNOWN"}</p>
   <p>EMA 9: ${format(data.ema9)}</p>
   <p>EMA 20: ${format(data.ema20)}</p>
   <p>RSI: ${data.rsi ?? "—"}</p>
