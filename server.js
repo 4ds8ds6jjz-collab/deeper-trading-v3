@@ -342,6 +342,15 @@ const breakoutStatus =
       ? "SELL"
       : "WAIT";
 }
+const longEntry = buyTrigger;
+const longSL = longEntry - atr14 * 1.5;
+const longTP1 = longEntry + (longEntry - longSL) * 1.5;
+const longTP2 = longEntry + (longEntry - longSL) * 2;
+
+const shortEntry = sellTrigger;
+const shortSL = shortEntry + atr14 * 1.5;
+const shortTP1 = shortEntry - (shortSL - shortEntry) * 1.5;
+const shortTP2 = shortEntry - (shortSL - shortEntry) * 2;
     const entry = direction === "WAIT" ? null : price;
     const stopLoss = direction === "BUY"
       ? price - risk
@@ -362,6 +371,21 @@ const breakoutStatus =
       : null;
 
     res.json({
+      longPlan: {
+  entry: longEntry,
+  stopLoss: longSL,
+  takeProfit1: longTP1,
+  takeProfit2: longTP2,
+  condition: "15m candle closes above breakout level"
+},
+
+shortPlan: {
+  entry: shortEntry,
+  stopLoss: shortSL,
+  takeProfit1: shortTP1,
+  takeProfit2: shortTP2,
+  condition: "15m candle closes below breakdown level"
+},
       breakoutLevel,
 breakdownLevel,
 buyTrigger,
