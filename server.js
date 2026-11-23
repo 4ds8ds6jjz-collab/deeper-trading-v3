@@ -376,7 +376,7 @@ const shortTP2 = shortEntry - (shortSL - shortEntry) * 2;
   stopLoss: longSL,
   takeProfit1: longTP1,
   takeProfit2: longTP2,
-  condition: "15m candle closes above breakout level"
+  condition: `${interval} candle closes above $${buyTrigger.toFixed(2)}`
 },
 
 shortPlan: {
@@ -384,7 +384,7 @@ shortPlan: {
   stopLoss: shortSL,
   takeProfit1: shortTP1,
   takeProfit2: shortTP2,
-  condition: "15m candle closes below breakdown level"
+  condition: `${interval} candle closes below $${sellTrigger.toFixed(2)}`
 },
       breakoutLevel,
 breakdownLevel,
