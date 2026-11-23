@@ -305,6 +305,27 @@ const volumeStrength = volumeRatio === null
   : "LOW";
 
 
+const structureCandles = candles.slice(-41, -1);
+
+let marketStructure = "SIDEWAYS";
+
+if (structureCandles.length >= 20) {
+  const older = structureCandles.slice(0, 20);
+  const newer = structureCandles.slice(-20);
+
+  const olderHigh = Math.max(...older.map(c => c.high));
+  const olderLow = Math.min(...older.map(c => c.low));
+
+  const newerHigh = Math.max(...newer.map(c => c.high));
+  const newerLow = Math.min(...newer.map(c => c.low));
+
+  if (newerHigh > olderHigh && newerLow > olderLow) {
+    marketStructure = "BULLISH";
+  } else if (newerHigh < olderHigh && newerLow < olderLow) {
+    marketStructure = "BEARISH";
+  }
+}
+
 const breakoutLevel = swingHigh;
 const breakdownLevel = swingLow;
 
@@ -322,16 +343,32 @@ const breakoutStatus =
   direction =
     price > buyTrigger &&
     ema9 > ema20 &&
+    marketStructure === "BULLISH" &&
     rsi > adaptiveSettings.rsiBuy &&
     volumeRatio >= 1.2
       ? "BUY"
       : price < sellTrigger &&
         ema9 < ema20 &&
+        marketStructure === "BEARISH" &&
         rsi < adaptiveSettings.rsiSell &&
         volumeRatio >= 1.2
       ? "SELL"
       : "WAIT";
 }
+
+if (mode === "TRADE_NOW") {
+  const nearSupport = price <= swingLow + atr14 * 0.5;
+  const nearResistance = price >= swingHigh - atr14 * 0.5;
+
+  if (direction === "SELL" && nearSupport) {
+    direction = "WAIT";
+  }
+
+  if (direction === "BUY" && nearResistance) {
+    direction = "WAIT";
+  }
+}
+
 const signalQuality = direction === "WAIT"
   ? "WAIT"
   : volumeRatio === null
@@ -392,8 +429,10 @@ breakdownLevel,
 buyTrigger,
 sellTrigger,
 breakoutStatus,
+      
       symbol,
       interval,
+      marketStructure,
       source: data.source,
       status: direction === "WAIT" ? "NO TRADE" : "CANDIDATE SETUP",
       direction,
