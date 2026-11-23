@@ -381,7 +381,19 @@ requestAnimationFrame(() => {
 
         document.getElementById("tradeNote").textContent =
           data.note || "Indicative setup only. Not a confirmed trade.";
-          
+     const qualityEl = document.getElementById("signalQuality");
+
+if (qualityEl) {
+  const quality = data.signalQuality || "UNCONFIRMED";
+
+  qualityEl.textContent = "⚡ Signal Quality: " + quality;
+
+  qualityEl.style.color =
+    quality === "STRONG" ? "#4ade80" :
+    quality === "OVEREXTENDED" ? "#fb7185" :
+    quality === "EARLY" ? "#facc15" :
+    "#94a3b8";
+}     
 updateTradeLines(data);
 
       } catch (error) {
