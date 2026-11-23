@@ -82,7 +82,17 @@
     <div class="divider"></div>
 
   <h2>⚡ AI Trading Analysis</h2>
+<div style="display:flex;gap:10px;margin:18px 0;">
+  <button id="bestSetupBtn" type="button"
+    style="flex:1;background:#2563eb;color:white;">
+    🎯 BEST SETUP
+  </button>
 
+  <button id="tradeNowBtn" type="button"
+    style="flex:1;background:#334155;color:white;">
+    ⚡ TRADE NOW
+  </button>
+</div>
 
   <h2 id="tradeDirection">Loading analysis...</h2>
 
@@ -131,6 +141,22 @@
   let candleChart;
 let candleSeries;
 let tradePriceLines = [];
+let analysisMode = "BEST_SETUP";
+
+const bestSetupBtn = document.getElementById("bestSetupBtn");
+const tradeNowBtn = document.getElementById("tradeNowBtn");
+
+bestSetupBtn.addEventListener("click", () => {
+  analysisMode = "BEST_SETUP";
+  bestSetupBtn.style.background = "#2563eb";
+  tradeNowBtn.style.background = "#334155";
+});
+
+tradeNowBtn.addEventListener("click", () => {
+  analysisMode = "TRADE_NOW";
+  tradeNowBtn.style.background = "#2563eb";
+  bestSetupBtn.style.background = "#334155";
+});
 
 function updateCandleCountdown() {
   const timeframe = document.getElementById("timeframe").value;
@@ -315,7 +341,10 @@ requestAnimationFrame(() => {
 
     document.getElementById("symbol")
       .addEventListener("change", loadPrice);
-    async function loadAnalysis() {
+let analysisMode = "best";
+
+async function loadAnalysis(mode = analysisMode) {
+  analysisMode = mode;
       const symbol = document.getElementById("symbol").value;
       const interval = document.getElementById("timeframe").value;
 
@@ -408,7 +437,13 @@ updateTradeLines(data);
 
     document.getElementById("timeframe")
       .addEventListener("change", loadAnalysis);
+document.getElementById("bestSetupBtn").onclick = () => {
+  loadAnalysis("best");
+};
 
+document.getElementById("tradeNowBtn").onclick = () => {
+  loadAnalysis("now");
+};
     loadAnalysis();
     setInterval(loadAnalysis, 30000);
     
