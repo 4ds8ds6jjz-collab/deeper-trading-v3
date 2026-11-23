@@ -446,7 +446,10 @@ candleChart.priceScale("right").applyOptions({
   autoScale: true
 });
 
-    candleChart.timeScale().fitContent();
+    if (!window.chartInitiallyFitted) {
+  candleChart.timeScale().fitContent();
+  window.chartInitiallyFitted = true;
+}
     loadAnalysis();
 requestAnimationFrame(() => {
   candleChart.applyOptions({
