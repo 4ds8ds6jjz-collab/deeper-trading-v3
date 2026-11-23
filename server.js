@@ -149,7 +149,7 @@ console.log("ANALYSIS PARAMS:", { symbol, interval });
         volume: row[5]
       }))
       .filter(c =>
-        c.time + granularity <= end &&
+        c.time <= end &&
         [c.open, c.high, c.low, c.close]
           .every(Number.isFinite)
       )
