@@ -63,6 +63,33 @@
       padding: 20px;
       margin-bottom: 16px;
     }
+    
+#tradeDirection {
+  font-size: 20px;
+  margin: 12px 0 6px;
+}
+
+#signalQuality {
+  font-size: 12px !important;
+  margin: 6px 0 !important;
+}
+
+#breakoutStatus {
+  font-size: 12px !important;
+  margin: 6px 0 12px !important;
+}
+
+#tradeReason,
+#tradeNote {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 8px 0;
+}
+
+#bestSetupPlans {
+  margin: 12px 0 !important;
+}
+
     select, button {
       background: #1e293b;
       color: white;
@@ -360,6 +387,23 @@ const levels = [
 }
 
 async function loadChart() {
+  
+const chartSelection = 
+  document.getElementById("symbol").value + "_" +
+  document.getElementById("timeframe").value;
+
+if (window.lastChartSelection !== chartSelection) {
+  window.chartInitiallyFitted = false;
+  tradeZoneAnchorTime = null;
+  activeTradeZone = null;
+
+  if (tradeZoneOverlay) {
+    tradeZoneOverlay.innerHTML = "";
+  }
+
+  window.lastChartSelection = chartSelection;
+}
+
   const symbol = document.getElementById("symbol").value;
   const interval = document.getElementById("timeframe").value;
   const container = document.getElementById("tradingChart");
@@ -605,17 +649,28 @@ setupEntry.style.color = isPending
 
   setupCondition.textContent = selectedPlan.condition || "";
 
-  setupDetails.innerHTML = `
-    <p>Entry: ${format(selectedPlan.entry)}</p>
-    <p>Stop Loss: ${format(selectedPlan.stopLoss)}</p>
-    <p>Target 1: ${format(selectedPlan.takeProfit1)}</p>
-    <p>Target 2: ${format(selectedPlan.takeProfit2)}</p>
-  `;
+  
+setupDetails.innerHTML = `
+  <p>📍 Entry: ${format(selectedPlan.entry)}</p>
+  <p>🛑 Stop Loss: ${format(selectedPlan.stopLoss)}</p>
+  <p>🎯 Target 1: ${format(selectedPlan.takeProfit1)}</p>
+  <p>🎯 Target 2: ${format(selectedPlan.takeProfit2)}</p>
+  <hr style="border:0;border-top:1px solid #334155;margin:12px 0;">
+  <p>EMA 9: ${format(data.ema9)}</p>
+  <p>EMA 20: ${format(data.ema20)}</p>
+  <p>RSI: ${data.rsi ?? "—"}</p>
+  <p>Volume: ${data.volumeStrength || "UNKNOWN"}</p>
+  <p>Signal: ${data.signalQuality || "UNCONFIRMED"}</p>
+`;
+
 } else {
   plansBox.style.display = "none";
 }
 
         const direction = data.direction || "WAIT";
+        
+const displayPlan = selectedPlan || data;
+
 
         directionEl.textContent =
           direction + " · " + (data.status || "Analysis");
@@ -625,20 +680,41 @@ setupEntry.style.color = isPending
           direction === "SELL" ? "#fb7185" :
           "#facc15";
 
-        document.getElementById("entry").textContent =
-          format(data.entry);
+        
+document.getElementById("entry").textContent =
+  format(displayPlan.entry);
 
-        document.getElementById("stopLoss").textContent =
-          format(data.stopLoss);
+document.getElementById("stopLoss").textContent =
+  format(displayPlan.stopLoss);
 
-        document.getElementById("target1").textContent =
-          format(data.takeProfit1);
+document.getElementById("target1").textContent =
+  format(displayPlan.takeProfit1);
 
-        document.getElementById("target2").textContent =
-          format(data.takeProfit2);
+document.getElementById("target2").textContent =
+  format(displayPlan.takeProfit2);
 
-        document.getElementById("riskReward").textContent =
-          data.riskReward || "—";
+        
+const entryPrice = Number(displayPlan.entry);
+const slPrice = Number(displayPlan.stopLoss);
+const tpPrice = Number(displayPlan.takeProfit2);
+
+const risk = Math.abs(entryPrice - slPrice);
+const reward = tpPrice > entryPrice && slPrice < entryPrice
+  ? tpPrice - entryPrice
+  : tpPrice < entryPrice && slPrice > entryPrice
+    ? entryPrice - tpPrice
+    : 0;
+
+document.getElementById("riskReward").textContent =
+  displayPlan.entry != null &&
+  displayPlan.stopLoss != null &&
+  displayPlan.takeProfit2 != null &&
+  Number.isFinite(risk) &&
+  Number.isFinite(reward) &&
+  risk > 0
+    ? "1:" + (reward / risk).toFixed(2)
+    : "—";
+
 
         document.getElementById("tradeReason").textContent =
           "Reason: " + (data.reason || "Not available");
