@@ -333,6 +333,15 @@ const breakoutBuffer = atr14 * 0.1;
 
 const buyTrigger = breakoutLevel + breakoutBuffer;
 const sellTrigger = breakdownLevel - breakoutBuffer;
+
+const lastClosedCandle = candles[candles.length - 2];
+
+const confirmedBuyBreakout =
+  lastClosedCandle.close > buyTrigger;
+
+const confirmedSellBreakdown =
+  lastClosedCandle.close < sellTrigger;
+
 const breakoutStatus =
   price > buyTrigger
     ? "BREAKOUT CONFIRMED"
@@ -354,6 +363,16 @@ const breakoutStatus =
         volumeRatio >= 1.2
       ? "SELL"
       : "WAIT";
+}
+
+if (mode === "TRADE_NOW") {
+  if (direction === "BUY" && marketStructure !== "BULLISH") {
+    direction = "WAIT";
+  }
+
+  if (direction === "SELL" && marketStructure !== "BEARISH") {
+    direction = "WAIT";
+  }
 }
 
 if (mode === "TRADE_NOW") {
@@ -380,6 +399,63 @@ const signalQuality = direction === "WAIT"
   direction === "SELL" && rsi <= 30
 ? "OVEREXTENDED"
 : "EARLY";
+// SIGNAL CONFIDENCE ENGINE
+
+let confidenceScore = 0;
+
+if (direction !== "WAIT") {
+
+  const isBuy = direction === "BUY";
+
+  // EMA Trend - 20 points
+  if (isBuy ? ema9 > ema20 : ema9 < ema20) {
+    confidenceScore += 20;
+  }
+
+  // RSI Momentum - 20 points
+  if (
+    isBuy
+      ? rsi > adaptiveSettings.rsiBuy && rsi < 70
+      : rsi < adaptiveSettings.rsiSell && rsi > 30
+  ) {
+    confidenceScore += 20;
+  }
+
+  // Market Structure - 25 points
+  if (
+    isBuy
+      ? marketStructure === "BULLISH"
+      : marketStructure === "BEARISH"
+  ) {
+    confidenceScore += 25;
+  }
+
+  // Volume Confirmation - 20 points
+  if (volumeRatio !== null) {
+    if (volumeRatio >= 1.5) {
+      confidenceScore += 20;
+    } else if (volumeRatio >= 1.2) {
+      confidenceScore += 15;
+    } else if (volumeRatio >= 1.0) {
+      confidenceScore += 10;
+    }
+  }
+
+  // Breakout Confirmation - 15 points
+  if (isBuy ? price > buyTrigger : price < sellTrigger) {
+    confidenceScore += 15;
+  }
+}
+
+const signalConfidence = direction === "WAIT"
+  ? null
+  : Math.min(100, confidenceScore);
+
+const confidenceLevel =
+  signalConfidence === null ? "NO TRADE" :
+  signalConfidence >= 80 ? "HIGH" :
+  signalConfidence >= 60 ? "MEDIUM" :
+  "LOW";
 const longEntry = buyTrigger;
 const longSL = longEntry - atr14 * 1.5;
 const longTP1 = longEntry + (longEntry - longSL) * 1.5;
@@ -443,6 +519,9 @@ breakoutStatus,
       volumeRatio: volumeRatio === null ? null : Number(volumeRatio.toFixed(2)),
       volumeStrength,
       signalQuality,
+            signalConfidence,
+      confidenceLevel,
+      historicalAccuracy: null,
       entry: entry === null ? null : Number(entry.toFixed(2)),
       stopLoss: stopLoss === null ? null : Number(stopLoss.toFixed(2)),
       takeProfit1: takeProfit1 === null ? null : Number(takeProfit1.toFixed(2)),
