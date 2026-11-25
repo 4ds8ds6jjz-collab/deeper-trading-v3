@@ -194,6 +194,32 @@
 <div id="signalQuality" style="font-size:16px;font-weight:700;color:#fbbf24;margin:12px 0 20px;">
   ⚡ Signal Quality: Loading...
 </div>
+<div id="confidenceBox" style="background:#172235;border:1px solid #26364c;border-radius:12px;padding:14px;margin:12px 0;">
+
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <span style="font-size:14px;font-weight:600;">
+      Signal Confidence
+    </span>
+
+    <strong id="confidenceValue" style="font-size:24px;color:#94a3b8;">
+      —
+    </strong>
+  </div>
+
+  <div style="height:8px;background:#334155;border-radius:10px;margin:12px 0;overflow:hidden;">
+    <div id="confidenceBar" style="width:0%;height:100%;background:#4ade80;border-radius:10px;transition:width 0.6s ease;">
+    </div>
+  </div>
+
+  <div id="confidenceLabel" style="font-size:12px;font-weight:700;color:#94a3b8;">
+    Analyzing...
+  </div>
+
+  <div style="font-size:11px;color:#94a3b8;margin-top:10px;">
+    Technical confidence score, not win probability.
+  </div>
+
+</div>
 <div id="breakoutStatus"
      style="font-size:16px;font-weight:bold;color:#facc15;margin:12px 0;">
   ⏳ WAIT FOR BREAKOUT / BREAKDOWN
@@ -666,7 +692,12 @@ if (selectedPlan) {
   plansBox.style.display = "block";
 
   
-const isBuy = selectedPlan === data.longPlan;
+const isBuy =
+  data.direction === "BUY" ||
+  (
+    data.direction === "WAIT" &&
+    selectedPlan === data.longPlan
+  );
 const isPending = data.direction === "WAIT";
 
 setupTitle.textContent = isPending
@@ -782,6 +813,45 @@ if (qualityEl) {
     quality === "EARLY" ? "#facc15" :
     "#94a3b8";
 }     
+// SIGNAL CONFIDENCE DISPLAY
+
+const confidenceValue = document.getElementById("confidenceValue");
+const confidenceBar = document.getElementById("confidenceBar");
+const confidenceLabel = document.getElementById("confidenceLabel");
+
+const score = data.signalConfidence;
+
+if (score != null && Number.isFinite(Number(score))) {
+
+  const percent = Math.max(0, Math.min(100, Number(score)));
+
+  const color =
+    percent >= 80 ? "#4ade80" :
+    percent >= 60 ? "#facc15" :
+    "#fb7185";
+
+  confidenceValue.textContent = percent + "%";
+  confidenceValue.style.color = color;
+
+  confidenceBar.style.width = percent + "%";
+  confidenceBar.style.background = color;
+
+  confidenceLabel.textContent =
+    percent >= 80 ? "HIGH CONFIDENCE" :
+    percent >= 60 ? "MEDIUM CONFIDENCE" :
+    "LOW CONFIDENCE";
+
+  confidenceLabel.style.color = color;
+
+} else {
+
+  confidenceValue.textContent = "—";
+  confidenceValue.style.color = "#94a3b8";
+  confidenceBar.style.width = "0%";
+  confidenceLabel.textContent = "WAIT / NO ACTIVE SIGNAL";
+  confidenceLabel.style.color = "#94a3b8";
+
+}
 const breakoutEl = document.getElementById("breakoutStatus");
 
 if (breakoutEl) {
