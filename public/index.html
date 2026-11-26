@@ -162,7 +162,7 @@
   <option value="5m">5m</option>
   <option value="15m" selected>15m</option>
   <option value="1h">1H</option>
-  <option value="4h">4H</option>
+  <option value="6h">6H</option>
   <option value="1d">1D</option>
 </select>
 </div>
@@ -289,6 +289,8 @@ let tradeZoneOverlay = null;
 let activeTradeZone = null;
 let tradeZoneAnchorTime = null;
 let analysisMode = "BEST_SETUP";
+let analysisRequestId = 0;
+let chartRequestId = 0;
 const bestSetupBtn = document.getElementById("bestSetupBtn");
 const tradeNowBtn = document.getElementById("tradeNowBtn");
 
@@ -387,7 +389,42 @@ width: zoneWidth + "px",
   makeZone(entryY, slY, "rgba(239,68,68,0.22)");
   makeZone(entryY, tpY, "rgba(34,197,94,0.22)");
 }
+// UNIFIED PENDING SETUP FILTER
 
+function getPendingPlan(data) {
+
+  if (data.direction !== "WAIT") {
+    return null;
+  }
+
+  if (data.isSidewaysMarket !== false) {
+    return null;
+  }
+
+  if (data.setupStatus !== "NO_SETUP") {
+    return null;
+  }
+
+  if (
+    data.marketStructure === "BULLISH" &&
+    data.higherTimeframeBias === "BULLISH" &&
+    Number(data.ema9) > Number(data.ema20) &&
+    Number(data.rsi) > 53
+  ) {
+    return data.longPlan || null;
+  }
+
+  if (
+    data.marketStructure === "BEARISH" &&
+    data.higherTimeframeBias === "BEARISH" &&
+    Number(data.ema9) < Number(data.ema20) &&
+    Number(data.rsi) < 47
+  ) {
+    return data.shortPlan || null;
+  }
+
+  return null;
+}
 function updateTradeLines(data) {
   if (!candleSeries) return;
 
@@ -397,14 +434,7 @@ function updateTradeLines(data) {
   tradePriceLines = [];
 
   
-const pendingPlan =
-  data.direction === "WAIT" && data.longPlan && data.shortPlan
-    ? Number(data.ema9) > Number(data.ema20)
-      ? data.longPlan
-      : Number(data.ema9) < Number(data.ema20)
-        ? data.shortPlan
-        : null
-    : null;
+const pendingPlan = getPendingPlan(data);
 
 const plan = pendingPlan || data;
 
@@ -446,12 +476,21 @@ const levels = [
 }
 
 async function loadChart() {
+  const requestId = ++chartRequestId;
   
 const chartSelection = 
   document.getElementById("symbol").value + "_" +
   document.getElementById("timeframe").value;
 
 if (window.lastChartSelection !== chartSelection) {
+  analysisRequestId++;
+
+if (candleSeries) {
+  tradePriceLines.forEach(line => {
+    candleSeries.removePriceLine(line);
+  });
+  tradePriceLines = [];
+}
   window.chartInitiallyFitted = false;
   tradeZoneAnchorTime = null;
   activeTradeZone = null;
@@ -466,12 +505,7 @@ if (window.lastChartSelection !== chartSelection) {
   const symbol = document.getElementById("symbol").value;
   const interval = document.getElementById("timeframe").value;
   const container = document.getElementById("tradingChart");
-if (candleSeries) {
-  tradePriceLines.forEach(line => {
-    candleSeries.removePriceLine(line);
-  });
-  tradePriceLines = [];
-}
+
 
   try {
     const response = await fetch(
@@ -480,6 +514,9 @@ if (candleSeries) {
     );
 
     const data = await response.json();
+    if (requestId !== chartRequestId) {
+  return;
+}
 
     if (!response.ok || !Array.isArray(data.candles)) {
       throw new Error(data.error || "Candles unavailable");
@@ -627,7 +664,14 @@ requestAnimationFrame(() => {
       .addEventListener("change", loadPrice);
 
 async function loadAnalysis(mode = analysisMode) {
+
+  if (typeof mode !== "string") {
+    mode = analysisMode;
+  }
+
   analysisMode = mode;
+
+  const requestId = ++analysisRequestId;
       const symbol = document.getElementById("symbol").value;
       const interval = document.getElementById("timeframe").value;
 
@@ -651,7 +695,9 @@ async function loadAnalysis(mode = analysisMode) {
         );
 
         const data = await response.json();
-
+if (requestId !== analysisRequestId) {
+  return;
+}
         if (!response.ok) {
           throw new Error(data.error || "Analysis unavailable");
         }
@@ -674,19 +720,10 @@ const setupDetails = document.getElementById("setupDetails");
 
 
 const selectedPlan =
-  analysisMode === "TRADE_NOW" && data.direction !== "WAIT"
+  data.direction === "BUY" ||
+  data.direction === "SELL"
     ? data
-    : data.direction === "BUY"
-      ? data.longPlan
-      : data.direction === "SELL"
-        ? data.shortPlan
-        : data.longPlan && data.shortPlan
-          ? Number(data.ema9) > Number(data.ema20)
-            ? data.longPlan
-            : Number(data.ema9) < Number(data.ema20)
-              ? data.shortPlan
-              : null
-          : null;
+    : getPendingPlan(data);
 
 if (selectedPlan) {
   plansBox.style.display = "block";
@@ -747,10 +784,7 @@ setupDetails.innerHTML = `
 
         const direction = data.direction || "WAIT";
         
-const displayPlan =
-  analysisMode === "TRADE_NOW" && data.direction !== "WAIT"
-    ? data
-    : selectedPlan || data;
+const displayPlan = selectedPlan || data;
 
         directionEl.textContent =
           direction + " · " + (data.status || "Analysis");
@@ -855,53 +889,61 @@ if (score != null && Number.isFinite(Number(score))) {
 const breakoutEl = document.getElementById("breakoutStatus");
 
 if (breakoutEl) {
-  const status = data.breakoutStatus || "WAIT FOR BREAKOUT / BREAKDOWN";
 
-  
-const buyLevel = Number(data.buyTrigger);
-const sellLevel = Number(data.sellTrigger);
+  const pending = getPendingPlan(data);
 
-const bearish = data.direction === "SELL" ||
-  (data.direction === "WAIT" &&
-   Number(data.ema9) < Number(data.ema20));
+  if (data.direction === "BUY") {
 
-const bullish = data.direction === "BUY" ||
-  (data.direction === "WAIT" &&
-   Number(data.ema9) > Number(data.ema20));
+    breakoutEl.textContent =
+      "🟢 BUY SETUP · " +
+      (data.setupStatus || "CANDIDATE");
 
-breakoutEl.textContent = bearish
-  ? "⏳ SELL confirmation below " + format(sellLevel)
-  : bullish
-  ? "⏳ BUY confirmation above " + format(buyLevel)
-  : "⏳ WAIT · No clear direction";
+    breakoutEl.style.color = "#4ade80";
 
+  } else if (data.direction === "SELL") {
 
-  breakoutEl.style.color =
-    status === "BREAKOUT CONFIRMED" ? "#4ade80" :
-    status === "BREAKDOWN CONFIRMED" ? "#fb7185" :
-    "#facc15";
+    breakoutEl.textContent =
+      "🔴 SELL SETUP · " +
+      (data.setupStatus || "CANDIDATE");
+
+    breakoutEl.style.color = "#fb7185";
+
+  } else if (data.isSidewaysMarket) {
+
+    breakoutEl.textContent =
+      "⏳ SIDEWAYS MARKET · NO TRADE";
+
+    breakoutEl.style.color = "#facc15";
+
+  } else if (pending) {
+
+    breakoutEl.textContent =
+      "⏳ " + pending.condition;
+
+    breakoutEl.style.color = "#facc15";
+
+  } else {
+
+    breakoutEl.textContent =
+      "⏳ WAIT · No clear direction";
+
+    breakoutEl.style.color = "#94a3b8";
+
+  }
 }
 updateTradeLines(data);
 
       } catch (error) {
-        directionEl.textContent = "Analysis unavailable";
+
+  if (requestId !== analysisRequestId) {
+    return;
+  }
+
+  directionEl.textContent = "Analysis unavailable";
         document.getElementById("tradeReason").textContent =
           error.message;
       }
     }
-
-    document.getElementById("symbol")
-      .addEventListener("change", loadAnalysis);
-
-    document.getElementById("timeframe")
-      .addEventListener("change", loadAnalysis);
-
-    loadAnalysis();
-    setInterval(loadAnalysis, 30000);
-    
-    document.getElementById("symbol").addEventListener("change", loadChart);
-document.getElementById("timeframe").addEventListener("change", loadChart);
-
 loadChart();
 setInterval(loadChart, 30000);
   </script>
