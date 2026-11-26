@@ -168,7 +168,9 @@ console.log("ANALYSIS PARAMS:", { symbol, interval });
     });
   }
 });
+// TRADE SETUP MEMORY
 
+const lockedSetups = new Map();
 function calculateEMA(values, period) {
   const k = 2 / (period + 1);
   let result = values[0];
@@ -208,7 +210,12 @@ app.get("/api/analysis", async (req, res) => {
 }
 
     const data = await response.json();
-    const candles = data.candles || [];
+   const candleDuration = TIMEFRAMES[interval];
+const currentTime = Math.floor(Date.now() / 1000);
+
+const candles = (data.candles || []).filter(c =>
+  c.time + candleDuration <= currentTime
+);
 
     if (candles.length < 25) {
       return res.status(400).json({
@@ -334,7 +341,7 @@ const breakoutBuffer = atr14 * 0.1;
 const buyTrigger = breakoutLevel + breakoutBuffer;
 const sellTrigger = breakdownLevel - breakoutBuffer;
 
-const lastClosedCandle = candles[candles.length - 2];
+const lastClosedCandle = candles.at(-1);
 
 const confirmedBuyBreakout =
   lastClosedCandle.close > buyTrigger;
@@ -343,9 +350,9 @@ const confirmedSellBreakdown =
   lastClosedCandle.close < sellTrigger;
 
 const breakoutStatus =
-  price > buyTrigger
+  confirmedBuyBreakout
     ? "BREAKOUT CONFIRMED"
-    : price < sellTrigger
+    : confirmedSellBreakdown
     ? "BREAKDOWN CONFIRMED"
     : "WAIT FOR BREAKOUT / BREAKDOWN";
     if (mode === "BEST_SETUP") {
@@ -387,8 +394,125 @@ if (mode === "TRADE_NOW") {
     direction = "WAIT";
   }
 }
+// ANTI SIGNAL FLIPPING ENGINE
 
-const signalQuality = direction === "WAIT"
+const emaGap = Math.abs(ema9 - ema20);
+
+const minimumEmaGap = atr14 * 0.15;
+
+const previousCloses = closes.slice(0, -1);
+
+const previousEMA9 = calculateEMA(previousCloses, 9);
+const previousEMA20 = calculateEMA(previousCloses, 20);
+
+const bullishTrendConfirmed =
+  ema9 > ema20 &&
+  previousEMA9 > previousEMA20 &&
+  emaGap >= minimumEmaGap;
+
+const bearishTrendConfirmed =
+  ema9 < ema20 &&
+  previousEMA9 < previousEMA20 &&
+  emaGap >= minimumEmaGap;
+
+if (direction === "BUY" && !bullishTrendConfirmed) {
+  direction = "WAIT";
+}
+
+if (direction === "SELL" && !bearishTrendConfirmed) {
+  direction = "WAIT";
+}
+// SIDEWAYS MARKET FILTER
+
+const rangeCandles = candles.slice(-20);
+
+const rangeHigh = Math.max(
+  ...rangeCandles.map(c => c.high)
+);
+
+const rangeLow = Math.min(
+  ...rangeCandles.map(c => c.low)
+);
+
+const marketRange = rangeHigh - rangeLow;
+
+const isSidewaysMarket =
+  marketStructure === "SIDEWAYS" ||
+  marketRange < atr14 * 3 ||
+  Math.abs(ema9 - ema20) < atr14 * 0.20;
+
+if (isSidewaysMarket) {
+  direction = "WAIT";
+}
+// HIGHER TIMEFRAME CONFIRMATION
+
+const higherTimeframeMap = {
+  "1m": "15m",
+  "5m": "1h",
+  "15m": "1h",
+  "1h": "6h",
+  "6h": "1d",
+  "1d": "1d"
+};
+
+const higherInterval =
+  higherTimeframeMap[interval] || "1h";
+
+let higherTimeframeBias = "UNKNOWN";
+
+try {
+  const higherResponse = await fetch(
+    `${baseUrl}/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${higherInterval}`,
+    {
+      signal: AbortSignal.timeout(15000)
+    }
+  );
+
+  if (higherResponse.ok) {
+    const higherData = await higherResponse.json();
+
+    const higherCandles = (higherData.candles || [])
+      .filter(c =>
+        c.time + TIMEFRAMES[higherInterval] <=
+        Math.floor(Date.now() / 1000)
+      );
+
+    if (higherCandles.length >= 50) {
+      const higherCloses =
+        higherCandles.map(c => c.close);
+
+      const higherEMA20 =
+        calculateEMA(higherCloses, 20);
+
+      const higherEMA50 =
+        calculateEMA(higherCloses, 50);
+
+      higherTimeframeBias =
+        higherEMA20 > higherEMA50
+          ? "BULLISH"
+          : higherEMA20 < higherEMA50
+          ? "BEARISH"
+          : "NEUTRAL";
+    }
+  }
+} catch (error) {
+  console.log("HTF confirmation unavailable");
+}
+
+if (
+  direction === "BUY" &&
+  higherTimeframeBias !== "BULLISH"
+) {
+  direction = "WAIT";
+}
+
+if (
+  direction === "SELL" &&
+  higherTimeframeBias !== "BEARISH"
+) {
+  direction = "WAIT";
+}
+let signalQuality = direction === "WAIT"
   ? "WAIT"
   : volumeRatio === null
   ? "UNCONFIRMED"
@@ -447,11 +571,11 @@ if (direction !== "WAIT") {
   }
 }
 
-const signalConfidence = direction === "WAIT"
+let signalConfidence = direction === "WAIT"
   ? null
   : Math.min(100, confidenceScore);
 
-const confidenceLevel =
+let confidenceLevel =
   signalConfidence === null ? "NO TRADE" :
   signalConfidence >= 80 ? "HIGH" :
   signalConfidence >= 60 ? "MEDIUM" :
@@ -465,26 +589,138 @@ const shortEntry = sellTrigger;
 const shortSL = shortEntry + atr14 * 1.5;
 const shortTP1 = shortEntry - (shortSL - shortEntry) * 1.5;
 const shortTP2 = shortEntry - (shortSL - shortEntry) * 2;
-    const entry = direction === "WAIT" ? null : price;
-    const stopLoss = direction === "BUY"
+    let entry = direction === "WAIT" ? null : price;
+    let stopLoss = direction === "BUY"
       ? price - risk
       : direction === "SELL"
       ? price + risk
       : null;
 
-    const takeProfit1 = direction === "BUY"
+    let takeProfit1 = direction === "BUY"
       ? price + risk * 1.5
       : direction === "SELL"
       ? price - risk * 1.5
       : null;
 
-    const takeProfit2 = direction === "BUY"
+    let takeProfit2 = direction === "BUY"
       ? price + risk * 2
       : direction === "SELL"
       ? price - risk * 2
       : null;
+      // LIVE PRICE FOR SETUP TRACKING
 
+let livePrice = null;
+
+try {
+  const liveResponse = await fetch(
+    `${baseUrl}/api/price?symbol=${encodeURIComponent(symbol)}`,
+    {
+      signal: AbortSignal.timeout(10000)
+    }
+  );
+
+  if (liveResponse.ok) {
+    const liveData = await liveResponse.json();
+
+    if (
+      Number.isFinite(liveData.price) &&
+      liveData.price > 0
+    ) {
+      livePrice = liveData.price;
+    }
+  }
+} catch (error) {
+  console.log("Live price unavailable");
+}
+// TRADE SETUP LOCKING & INVALIDATION
+
+const setupKey =
+  `${symbol}:${interval}:${mode}`;
+
+const existingSetup =
+  lockedSetups.get(setupKey);
+
+let setupStatus = "NO_SETUP";
+
+if (existingSetup) {
+
+  const isBuy =
+    existingSetup.direction === "BUY";
+
+  const stopHit = livePrice !== null && (
+  isBuy
+    ? livePrice <= existingSetup.stopLoss
+    : livePrice >= existingSetup.stopLoss
+);
+
+const targetHit = livePrice !== null && (
+  isBuy
+    ? livePrice >= existingSetup.takeProfit2
+    : livePrice <= existingSetup.takeProfit2
+);
+  const oppositeSignal =
+    direction !== "WAIT" &&
+    direction !== existingSetup.direction;
+
+  if (stopHit || targetHit || oppositeSignal) {
+
+    lockedSetups.delete(setupKey);
+
+    setupStatus = stopHit
+      ? "STOP_LOSS_HIT"
+      : targetHit
+      ? "TARGET_HIT"
+      : "SETUP_INVALIDATED";
+
+    direction = "WAIT";
+    entry = null;
+    stopLoss = null;
+    takeProfit1 = null;
+    takeProfit2 = null;
+
+  } else {
+
+    entry = existingSetup.entry;
+    stopLoss = existingSetup.stopLoss;
+    takeProfit1 = existingSetup.takeProfit1;
+    takeProfit2 = existingSetup.takeProfit2;
+direction = existingSetup.direction;
+    setupStatus = "LOCKED";
+
+  }
+
+} else if (direction !== "WAIT") {
+
+  lockedSetups.set(setupKey, {
+    direction,
+    entry,
+    stopLoss,
+    takeProfit1,
+    takeProfit2,
+    createdAt: Date.now()
+  });
+
+  setupStatus = "NEW_SETUP";
+
+}
+// SYNCHRONIZE SETUP DISPLAY
+
+if (direction === "WAIT") {
+  signalQuality = "WAIT";
+  signalConfidence = null;
+  confidenceLevel = "NO TRADE";
+}
+
+if (setupStatus === "LOCKED") {
+  signalQuality = "LOCKED";
+  signalConfidence = null;
+  confidenceLevel = "LOCKED SETUP";
+}
     res.json({
+      setupStatus,
+      higherTimeframeBias,
+      higherInterval,
+      isSidewaysMarket,
       longPlan: {
   entry: longEntry,
   stopLoss: longSL,
@@ -512,7 +748,9 @@ breakoutStatus,
       source: data.source,
       status: direction === "WAIT" ? "NO TRADE" : "CANDIDATE SETUP",
       direction,
-      price: Number(price.toFixed(2)),
+      price: Number((livePrice ?? price).toFixed(2)),
+analysisPrice: Number(price.toFixed(2)),
+livePriceAvailable: livePrice !== null,
       ema9: Number(ema9.toFixed(2)),
       ema20: Number(ema20.toFixed(2)),
       rsi: Number(rsi.toFixed(2)),
