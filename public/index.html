@@ -317,7 +317,7 @@ function updateCandleCountdown() {
     "5m": 300,
     "15m": 900,
     "1h": 3600,
-    "4h": 14400,
+ "6h": 21600,
     "1d": 86400
   };
 
@@ -660,9 +660,7 @@ requestAnimationFrame(() => {
       }
     }
 
-    document.getElementById("symbol")
-      .addEventListener("change", loadPrice);
-
+    
 async function loadAnalysis(mode = analysisMode) {
 
   if (typeof mode !== "string") {
@@ -944,6 +942,12 @@ updateTradeLines(data);
           error.message;
       }
     }
+document.getElementById("symbol")
+  .addEventListener("change", loadChart);
+
+document.getElementById("timeframe")
+  .addEventListener("change", loadChart);
+
 loadChart();
 setInterval(loadChart, 30000);
   </script>
