@@ -1,4 +1,3334 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DTI V5</title><style> *{box-sizing:border-box}body{margin:0;background:#090f19;color:#e8eef8;font:15px system-ui}main{max-width:1050px;margin:auto;padding:16px}header{padding:12px 0}h1{font-size:24px;margin:0}h2{font-size:19px}p,small{color:#a9b8ce;line-height:1.5}section{background:#131e2e;border:1px solid #28384d;border-radius:16px;padding:16px;margin:14px 0}button,select,textarea{font:inherit;color:inherit;background:#22334a;border:1px solid #3a506d;border-radius:9px;padding:12px}button{cursor:pointer}button.primary{background:#245ee9}button:disabled{opacity:.5} .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.row>*{flex:1}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:8px}.tile{background:#0d1725;border-radius:9px;padding:12px;overflow-wrap:anywhere}.tile small{display:block}.tile strong{display:block;margin-top:6px}.long{color:#48df9d}.short{color:#ff7585}.wait{color:#ffd45c}canvas{width:100%;height:300px;display:block}textarea{width:100%;min-height:90px}pre{white-space:pre-wrap;overflow-wrap:anywhere;color:#b9cbe2}table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:8px;text-align:left;border-bottom:1px solid #28384d;white-space:nowrap}.scroll{overflow:auto}a{color:#9dc4ff}#verdict{font-size:30px;font-weight:800} .muted{color:#a9b8ce}</style></head><body><main><header><h1>DTI / Trading Intelligence V5</h1><p>Rule-based research · Coinbase USD markets · No token fees</p></header><section><div class="row"><select id="symbol"><option>BTC</option><option>ETH</option><option>PAXG</option></select><select id="tf"><option>15m</option><option>1h</option><option>4h</option><option>1d</option></select><select id="mode"><option value="BEST_SETUP">BEST SETUP</option><option value="TRADE_NOW">TRADE NOW</option></select></div><p id="status">Ready</p><canvas id="chart"></canvas><button class="primary" id="analyze">Analyze market</button></section><section><h2>Decision engine</h2><div id="verdict">—</div><p id="reason"></p><div id="levels" class="grid"></div><div id="plan"></div><p id="coverage"></p><h2>Four lanes</h2><div id="lanes" class="grid"></div><div id="context"></div><h2>Technical context</h2><div id="metrics" class="grid"></div></section><section><h2>Strategy builder</h2><p>Supported English template: BUY/SELL when RSI(14) is above/below a number, optionally with 200 EMA filter. Not a general AI compiler.</p><textarea id="rule" placeholder="Buy when RSI(14) drops under 30 and price holds the 200 EMA"></textarea><div class="row"><button id="compile">Compile rule</button><button id="custom">Backtest custom rule</button></div><pre id="compiled"></pre></section><section><h2>Historical backtesting</h2><p>Technical rules only. Next candle entry, 1% planned risk, 0.05% fee and 0.02% slippage per side, no leverage. Latest continuous data only.</p><button id="backtest" class="primary">Run historical backtest</button><p id="btstatus"></p><div id="btmetrics" class="grid"></div><canvas id="equity"></canvas><div class="scroll" id="trades"></div></section><section><h2>Signal accountability / paper research</h2><p>Recorded confirmed signals are graded against subsequent closed candles. Not a funded account or full paper-trading portfolio. Local records may disappear on Render redeploy.</p><button id="history">Refresh records</button><div class="scroll" id="records"></div></section><p>Research only, not investment advice. No guaranteed accuracy. News and macro are context only, not validated directional votes. Alerts require server environment configuration and an awake instance.</p></main><script>
-const $=id=>document.getElementById(id), fmt=x=>x==null?'—':typeof x==='number'?x.toLocaleString('en-IN',{maximumFractionDigits:4}):String(x), date=x=>new Date(x*1000).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'});let generation=0,last=null;function params(){return new URLSearchParams({symbol:$('symbol').value,tf:$('tf').value,mode:$('mode').value});}async function api(url){let r=await fetch(url,{cache:'no-store'}),j=await r.json();if(!r.ok)throw Error(j.error||'Request failed');return j;}function tile(parent,k,v){let d=document.createElement('div');d.className='tile';let a=document.createElement('small'),b=document.createElement('strong');a.textContent=k;b.textContent=fmt(v);d.append(a,b);parent.append(d);}function tiles(id,obj){let e=$(id);e.replaceChildren();Object.entries(obj).forEach(([k,v])=>tile(e,k,v));}function table(id,rows,keys){let root=$(id);root.replaceChildren();let t=document.createElement('table'),h=t.insertRow();for(let k of keys){let c=document.createElement('th');c.textContent=k;h.append(c);}for(let r of rows){let tr=t.insertRow();for(let k of keys){let c=tr.insertCell();c.textContent=k==='time'?date(r[k]):fmt(r[k]);}}root.append(t);}function canvas(id){let c=$(id),w=c.clientWidth||300,h=300,d=devicePixelRatio||1;c.width=w*d;c.height=h*d;let g=c.getContext('2d');g.scale(d,d);g.fillStyle='#0b1421';g.fillRect(0,0,w,h);return {g,w,h};}function chart(data){let {g,w,h}=canvas('chart'),a=data.candles.slice(-85),r=data.active||data.technical.plan,levels=r?[r.entry,r.stop,r.target].filter(Number.isFinite):[],lo=Math.min(...a.map(c=>c.low),...levels),hi=Math.max(...a.map(c=>c.high),...levels),y=v=>15+(hi-v)/(hi-lo||1)*(h-35),dx=(w-65)/a.length;g.font='11px system-ui';for(let i=0;i<5;i++){let v=lo+(hi-lo)*i/4;g.strokeStyle='#253247';g.beginPath();g.moveTo(0,y(v));g.lineTo(w-60,y(v));g.stroke();g.fillStyle='#a9b8ce';g.fillText(fmt(v),w-58,y(v)+4);}a.forEach((c,i)=>{let x=dx*(i+.5);g.strokeStyle=g.fillStyle=c.close>=c.open?'#48df9d':'#ff7585';g.beginPath();g.moveTo(x,y(c.high));g.lineTo(x,y(c.low));g.stroke();g.fillRect(x-dx*.3,Math.min(y(c.open),y(c.close)),Math.max(1,dx*.6),Math.max(1,Math.abs(y(c.open)-y(c.close))));});if(r)for(let [k,color] of [['entry','#79aaff'],['stop','#ff7585'],['target','#48df9d']]){if(!Number.isFinite(r[k]))continue;g.strokeStyle=g.fillStyle=color;g.setLineDash([4,4]);g.beginPath();g.moveTo(0,y(r[k]));g.lineTo(w-60,y(r[k]));g.stroke();g.setLineDash([]);g.fillText(k.toUpperCase(),4,y(r[k])-4);}}function render(d){last=d;let r=d.active,t=d.technical;$('verdict').textContent=r?r.direction+' · TRACKED':d.verdict;$('verdict').className=(r?r.direction:d.verdict).toLowerCase();$('reason').textContent=d.reason+(r?' | Original recorded levels retained.':'');tiles('levels',{Entry:r?.entry??(d.verdict==='WAIT'?null:t.entry),SL:r?.stop??(d.verdict==='WAIT'?null:t.stop),Target:r?.target??(d.verdict==='WAIT'?null:t.target)});$('plan').textContent=!r&&t.plan?'Conditional watch: '+t.plan.direction+' | Zone '+fmt(t.plan.zoneLow)+' – '+fmt(t.plan.zoneHigh)+' | SL '+fmt(t.plan.stop)+' | Target '+fmt(t.plan.target)+' | '+t.plan.condition+' | Reassess by '+date(t.plan.expiresAt):'';$('coverage').textContent=d.coverage;tiles('lanes',Object.fromEntries(Object.entries(d.lanes).map(([k,v])=>[k.toUpperCase(),v.direction+' · '+v.status+' · '+v.reason])));tiles('metrics',t.metrics);let ctx=$('context');ctx.replaceChildren();for(let n of d.lanes.news.headlines||[]){let p=document.createElement('p');p.textContent=n.title;ctx.append(p);}if(d.lanes.macro.observations){let p=document.createElement('p');p.textContent='Fed funds rate: '+d.lanes.macro.observations.map(x=>x.date+' '+x.value+'%').join(' | ');ctx.append(p);}chart(d);}
-async function analyze(){let g=++generation;$('status').textContent='Loading closed candles and context…';try{let d=await api('/api/analysis?'+params());if(g!==generation)return;render(d);$('status').textContent='Last closed candle: '+date(d.technical.time)+' (IST, candle open time)';}catch(e){if(g===generation){$('status').textContent=e.message;$('verdict').textContent='DATA UNAVAILABLE';$('reason').textContent='No fresh verdict';$('levels').replaceChildren();$('plan').textContent='';$('lanes').replaceChildren();$('metrics').replaceChildren();$('context').replaceChildren();$('coverage').textContent='';last=null;canvas('chart');}}}function equity(a){let {g,w,h}=canvas('equity');if(!a.length)return;let lo=Math.min(...a.map(x=>x.value)),hi=Math.max(...a.map(x=>x.value));g.strokeStyle='#79aaff';g.beginPath();a.forEach((x,i)=>{let px=i/(a.length-1||1)*w,py=10+(hi-x.value)/(hi-lo||1)*(h-20);i?g.lineTo(px,py):g.moveTo(px,py);});g.stroke();}async function bt(custom){$('backtest').disabled=$('custom').disabled=true;$('btstatus').textContent='Fetching historical data…';try{let p=params();if(custom)p.set('rule',$('rule').value);let j=await api('/api/backtest/start?'+p);for(let i=0;i<600;i++){await new Promise(r=>setTimeout(r,3000));let s=await api('/api/backtest/status?id='+encodeURIComponent(j.id));if(s.status==='FAILED')throw Error(s.error);if(s.status==='COMPLETED'){let r=s.result;$('btstatus').textContent=r.scope+' | '+date(r.start)+' to '+date(r.end);tiles('btmetrics',{Trades:r.total,Wins:r.wins,Losses:r.losses,'Win rate %':r.winRate,'Profit factor':r.profitFactor,'Net USD':r.net,'Final USD':r.capital,'Drawdown %':r.drawdown,'Wait candles':r.wait});equity(r.equity);table('trades',r.trades,['time','direction','type','entry','stop','target','exit','pnl','result']);return;}}throw Error('Monitoring timed out');}catch(e){$('btstatus').textContent=e.message;}finally{$('backtest').disabled=$('custom').disabled=false;}}async function history(){try{let r=await api('/api/records');table('records',r.records,['time','symbol','tf','direction','entry','stop','target','status']);}catch(e){$('records').textContent=e.message;}}$('analyze').onclick=analyze;for(let id of ['symbol','tf','mode'])$(id).onchange=analyze;$('backtest').onclick=()=>bt(false);$('custom').onclick=()=>bt(true);$('history').onclick=history;$('compile').onclick=async()=>{try{$('compiled').textContent=JSON.stringify((await api('/api/compile?'+new URLSearchParams({text:$('rule').value}))).rule,null,2);}catch(e){$('compiled').textContent=e.message;}};analyze();history();setInterval(()=>{if(!document.hidden)analyze();},60000);window.addEventListener('resize',()=>{if(last)chart(last);});
-</script></body></html>
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+  <meta charset="UTF-8">
+
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1">
+
+  <meta name="theme-color" content="#080d15">
+
+  <title>DTI — Deeper Trading Intelligence</title>
+
+  <style>
+
+    :root {
+      --bg: #080d15;
+      --panel: #101824;
+      --card: #151f2e;
+      --border: #263449;
+      --text: #edf2fa;
+      --muted: #94a3b8;
+      --blue: #3478f6;
+      --green: #22d39a;
+      --red: #ff586b;
+      --yellow: #f5c451;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+    }
+
+    header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+      background: #0d1420;
+    }
+
+    .brand {
+      font-size: 25px;
+      font-weight: 800;
+      letter-spacing: 2px;
+    }
+
+    .brand span {
+      color: var(--blue);
+    }
+
+    .tagline {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 6px;
+    }
+
+    main {
+      max-width: 1450px;
+      margin: auto;
+      padding: 16px;
+    }
+
+    h2 {
+      font-size: 20px;
+      margin: 0 0 16px;
+    }
+
+    h3 {
+      font-size: 15px;
+      margin: 0 0 10px;
+    }
+
+    p {
+      line-height: 1.6;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .green {
+      color: var(--green) !important;
+    }
+
+    .red {
+      color: var(--red) !important;
+    }
+
+    .yellow {
+      color: var(--yellow) !important;
+    }
+
+    .blue {
+      color: var(--blue) !important;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 16px;
+      min-width: 0;
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr)
+        minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    button,
+    select,
+    input,
+    textarea {
+      font: inherit;
+      color: var(--text);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    button {
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .primary {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: white;
+    }
+
+    .full {
+      width: 100%;
+    }
+
+    .mode-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .mode-button {
+      font-size: 13px;
+    }
+
+    .mode-button.active {
+      background: var(--blue);
+      border-color: var(--blue);
+    }
+
+    .price {
+      font-size: 30px;
+      font-weight: 800;
+      margin: 12px 0 5px;
+    }
+
+    .market-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    #chart {
+      width: 100%;
+      height: 420px;
+      overflow: hidden;
+      border-radius: 10px;
+    }
+
+    .verdict {
+      font-size: 27px;
+      font-weight: 800;
+      margin: 16px 0 8px;
+    }
+
+    .score-track {
+      height: 7px;
+      background: #29364a;
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 12px 0;
+    }
+
+    .score-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--blue);
+      transition: width 0.3s;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+      margin: 14px 0;
+    }
+
+    .metric {
+      padding: 13px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      min-width: 0;
+    }
+
+    .metric-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      font-size: 17px;
+      font-weight: 700;
+      margin-top: 7px;
+      overflow-wrap: anywhere;
+    }
+
+    .lane-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .lane {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      min-width: 0;
+    }
+
+    .lane-letter {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      background: #203758;
+      color: #83b5ff;
+      border-radius: 8px;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .lane-status {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .scenario {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--blue);
+      border-radius: 10px;
+      padding: 14px;
+      margin: 10px 0;
+    }
+
+    .scenario.long {
+      border-left-color: var(--green);
+    }
+
+    .scenario.short {
+      border-left-color: var(--red);
+    }
+
+    .scenario-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .scenario-status {
+      font-size: 10px;
+      color: var(--yellow);
+    }
+
+    .scenario-levels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+      margin: 12px 0;
+      font-size: 13px;
+    }
+
+    .scenario-levels span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      width: 100%;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    th,
+    td {
+      padding: 12px 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 110px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .field {
+      min-width: 0;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+    }
+
+    .progress-track {
+      background: #29364a;
+      height: 8px;
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 16px 0;
+    }
+
+    #progressBar {
+      height: 100%;
+      width: 0%;
+      background: var(--blue);
+      transition: width 0.3s;
+    }
+
+    #equityChart {
+      width: 100%;
+      height: 230px;
+      margin: 16px 0;
+    }
+
+    .news-item {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .news-item a {
+      color: #a8caff;
+      text-decoration: none;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .notice {
+      background: #151f2e;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+      margin: 12px 0;
+    }
+
+    .error {
+      color: var(--red);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    pre {
+      background: #080d15;
+      border: 1px solid var(--border);
+      padding: 12px;
+      border-radius: 10px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      font-size: 12px;
+    }
+
+    footer {
+      padding: 24px 16px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    @media (max-width: 950px) {
+
+      .dashboard {
+        grid-template-columns: 1fr;
+      }
+
+      .lane-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+    }
+
+    @media (max-width: 500px) {
+
+      main {
+        padding: 10px;
+      }
+
+      header {
+        padding: 16px;
+      }
+
+      .panel {
+        padding: 14px;
+        border-radius: 12px;
+      }
+
+      #chart {
+        height: 320px;
+      }
+
+      .lane-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .price {
+        font-size: 26px;
+      }
+
+      .verdict {
+        font-size: 24px;
+      }
+
+      .controls select {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .metric-value {
+        font-size: 15px;
+      }
+
+    }
+
+  </style>
+
+</head>
+
+<body>
+
+  <header>
+
+    <div class="brand">
+      DTI<span>.</span>
+    </div>
+
+    <div class="tagline">
+      DEEPER TRADING INTELLIGENCE · V5
+    </div>
+
+    <div class="tagline">
+      Research. Structure. Discipline.
+    </div>
+
+  </header>
+
+  <main>
+
+    <div class="dashboard">
+
+      <!-- LIVE MARKET -->
+
+      <section class="panel">
+
+        <h2>Live Market</h2>
+
+        <div class="controls">
+
+          <select id="symbol">
+
+            <option value="BTCUSDT">
+              BTC / USD
+            </option>
+
+            <option value="ETHUSDT">
+              ETH / USD
+            </option>
+
+            <option value="PAXGUSDT">
+              PAXG / USD
+            </option>
+
+          </select>
+
+          <select id="interval">
+
+            <option value="1m">1 Minute</option>
+
+            <option value="5m">5 Minutes</option>
+
+            <option value="15m" selected>
+              15 Minutes
+            </option>
+
+            <option value="1h">1 Hour</option>
+
+            <option value="4h">4 Hours</option>
+
+            <option value="6h">6 Hours</option>
+
+            <option value="1d">1 Day</option>
+
+          </select>
+
+        </div>
+
+        <div id="marketPrice" class="price">
+          —
+        </div>
+
+        <div class="market-meta">
+
+          <span id="marketStatus" class="muted">
+            Connecting to market...
+          </span>
+
+          <span id="countdown" class="blue">
+            —
+          </span>
+
+        </div>
+
+        <div id="chart"></div>
+
+        <div id="chartError" class="error"></div>
+
+        <p class="muted">
+          Coinbase spot data. Broker execution
+          prices may differ.
+        </p>
+
+      </section>
+
+      <!-- TRADE ANALYSIS -->
+
+      <section class="panel">
+
+        <h2>Trading Intelligence</h2>
+
+        <div class="mode-row">
+
+          <button
+            id="bestMode"
+            class="mode-button active">
+            BEST SETUP
+          </button>
+
+          <button
+            id="nowMode"
+            class="mode-button">
+            TRADE NOW
+          </button>
+
+        </div>
+
+        <button
+          id="analyzeButton"
+          class="primary full">
+          Analyze Market
+        </button>
+
+        <div id="analysisError" class="error"></div>
+
+        <div id="verdict" class="verdict yellow">
+          WAIT
+        </div>
+
+        <div id="setupType" class="muted">
+          Awaiting analysis
+        </div>
+
+        <p id="tradeReason" class="muted">
+          Loading market intelligence...
+        </p>
+
+        <div class="metric">
+
+          <div class="metric-label">
+            Technical Setup Score
+          </div>
+
+          <div
+            id="confidence"
+            class="metric-value">
+            —
+          </div>
+
+          <div class="score-track">
+
+            <div
+              id="confidenceBar"
+              class="score-fill">
+            </div>
+
+          </div>
+
+          <div class="muted">
+            Rule-based score, not win probability.
+          </div>
+
+        </div>
+
+        <div class="metric-grid">
+
+          <div class="metric">
+
+            <div class="metric-label">Entry</div>
+
+            <div
+              id="entry"
+              class="metric-value blue">
+              —
+            </div>
+
+          </div>
+
+          <div class="metric">
+
+            <div class="metric-label">Stop Loss</div>
+
+            <div
+              id="stopLoss"
+              class="metric-value red">
+              —
+            </div>
+
+          </div>
+
+          <div class="metric">
+
+            <div class="metric-label">Target 1</div>
+
+            <div
+              id="tp1"
+              class="metric-value green">
+              —
+            </div>
+
+          </div>
+
+          <div class="metric">
+
+            <div class="metric-label">Target 2</div>
+
+            <div
+              id="tp2"
+              class="metric-value green">
+              —
+            </div>
+
+          </div>
+
+          <div class="metric">
+
+            <div class="metric-label">
+              Risk / Reward
+            </div>
+
+            <div
+              id="riskReward"
+              class="metric-value">
+              —
+            </div>
+
+          </div>
+
+          <div class="metric">
+
+            <div class="metric-label">
+              Market Bias
+            </div>
+
+            <div
+              id="marketBias"
+              class="metric-value">
+              —
+            </div>
+
+          </div>
+
+        </div>
+
+        <div id="signalExpiry" class="muted"></div>
+
+        <div id="lastAnalysis" class="muted"></div>
+
+      </section>
+
+    </div>
+
+    <!-- ADVANCE OPPORTUNITIES -->
+
+    <section class="panel">
+
+      <h2>Upcoming Trade Opportunities</h2>
+
+      <p class="muted">
+        Conditional breakout, breakdown and pullback
+        levels. These are plans, not confirmed entries.
+      </p>
+
+      <div id="scenarios">
+
+        <p class="muted">
+          Waiting for market analysis...
+        </p>
+
+      </div>
+
+    </section>
+
+    <!-- FOUR INTELLIGENCE LANES -->
+
+    <section class="panel">
+
+      <h2>4-Lane Market Intelligence</h2>
+
+      <div class="lane-grid">
+
+        <div class="lane">
+
+          <div class="lane-letter">T</div>
+
+          <h3>Technical</h3>
+
+          <div
+            id="technicalBias"
+            class="lane-status">
+            —
+          </div>
+
+          <div id="technicalDetails" class="muted">
+            Waiting for data
+          </div>
+
+        </div>
+
+        <div class="lane">
+
+          <div class="lane-letter">F</div>
+
+          <h3>Market Flow</h3>
+
+          <div
+            id="flowBias"
+            class="lane-status">
+            —
+          </div>
+
+          <div id="flowDetails" class="muted">
+            Waiting for data
+          </div>
+
+        </div>
+
+        <div class="lane">
+
+          <div class="lane-letter">N</div>
+
+          <h3>News</h3>
+
+          <div
+            id="newsBias"
+            class="lane-status">
+            —
+          </div>
+
+          <div id="newsDetails" class="muted">
+            Waiting for data
+          </div>
+
+        </div>
+
+        <div class="lane">
+
+          <div class="lane-letter">M</div>
+
+          <h3>Macro</h3>
+
+          <div
+            id="macroBias"
+            class="lane-status">
+            —
+          </div>
+
+          <div id="macroDetails" class="muted">
+            Waiting for data
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="notice">
+        Technical and order-book conditions contribute
+        to the verdict. News and macro currently provide
+        context only.
+      </div>
+
+    </section>
+
+    <!-- MARKET STRUCTURE -->
+
+    <section class="panel">
+
+      <h2>Market Structure & Liquidity</h2>
+
+      <div
+        id="structureMetrics"
+        class="metric-grid">
+      </div>
+
+      <h3>Detected Fair Value Gaps</h3>
+
+      <div class="table-wrap">
+
+        <table>
+
+          <thead>
+
+            <tr>
+              <th>Direction</th>
+              <th>Zone Low</th>
+              <th>Zone High</th>
+              <th>Time</th>
+            </tr>
+
+          </thead>
+
+          <tbody id="fvgTable"></tbody>
+
+        </table>
+
+      </div>
+
+      <p class="muted">
+        Detected historical gaps are not necessarily
+        unfilled or currently actionable.
+      </p>
+
+    </section>
+
+    <!-- NEWS -->
+
+    <section class="panel">
+
+      <h2>Market News Radar</h2>
+
+      <div id="newsList">
+
+        <p class="muted">
+          Loading headlines...
+        </p>
+
+      </div>
+
+    </section>
+
+    <!-- STRATEGY BUILDER -->
+
+    <section class="panel">
+
+      <h2>Strategy Builder</h2>
+
+      <p class="muted">
+        Describe an RSI and EMA strategy in plain English.
+        Review its compiled rules before backtesting.
+      </p>
+
+      <textarea
+        id="strategyDescription"
+        placeholder="Buy when RSI(14) is below 30 and price is above the 200 EMA"></textarea>
+
+      <div class="controls">
+
+        <button
+          id="buildStrategy"
+          class="primary">
+          Build Strategy
+        </button>
+
+        <button id="clearStrategy">
+          Clear
+        </button>
+
+      </div>
+
+      <div id="strategyError" class="error"></div>
+
+      <pre id="compiledStrategy" hidden></pre>
+
+      <p class="muted">
+        Supported rules: LONG/SHORT, RSI(14) thresholds
+        and optional EMA 20, 50 or 200 filters.
+      </p>
+
+    </section>
+
+    <!-- HISTORICAL BACKTEST -->
+
+    <section class="panel">
+
+      <h2>Historical Backtesting</h2>
+
+      <p id="backtestSelection" class="muted"></p>
+
+      <div class="metric-grid">
+
+        <div class="field">
+
+          <label for="backtestDays">
+            Historical period
+          </label>
+
+          <select id="backtestDays">
+
+            <option value="7">7 Days</option>
+
+            <option value="30" selected>
+              30 Days
+            </option>
+
+            <option value="90">90 Days</option>
+
+            <option value="180">180 Days</option>
+
+          </select>
+
+        </div>
+
+        <div class="field">
+
+          <label for="backtestType">
+            Strategy
+          </label>
+
+          <select id="backtestType">
+
+            <option value="DEFAULT">
+              Built-in Strategy
+            </option>
+
+            <option value="CUSTOM">
+              Custom Strategy
+            </option>
+
+          </select>
+
+        </div>
+
+      </div>
+
+      <button
+        id="runBacktest"
+        class="primary full">
+        Run Historical Backtest
+      </button>
+
+      <div class="progress-track">
+
+        <div id="progressBar"></div>
+
+      </div>
+
+      <div id="backtestStatus" class="muted">
+        Ready to run historical backtest.
+      </div>
+
+      <div id="backtestResults" hidden>
+
+        <p id="backtestPeriod" class="muted"></p>
+
+        <div
+          id="backtestMetrics"
+          class="metric-grid">
+        </div>
+
+        <h3>Equity Curve</h3>
+
+        <div id="equityChart"></div>
+
+        <h3>Strategy-wise Performance</h3>
+
+        <div class="table-wrap">
+
+          <table>
+
+            <thead>
+
+              <tr>
+                <th>Strategy</th>
+                <th>Trades</th>
+                <th>Win Rate</th>
+                <th>Net P&L</th>
+              </tr>
+
+            </thead>
+
+            <tbody id="strategyPerformance"></tbody>
+
+          </table>
+
+        </div>
+
+        <h3 style="margin-top:20px">
+          Recent Trade History
+        </h3>
+
+        <div class="table-wrap">
+
+          <table>
+
+            <thead>
+
+              <tr>
+                <th>Date</th>
+                <th>Direction</th>
+                <th>Strategy</th>
+                <th>Entry</th>
+                <th>SL</th>
+                <th>Target</th>
+                <th>Exit</th>
+                <th>P&L</th>
+                <th>Result</th>
+              </tr>
+
+            </thead>
+
+            <tbody id="backtestTrades"></tbody>
+
+          </table>
+
+        </div>
+
+        <p id="backtestNote" class="muted"></p>
+
+      </div>
+
+      <div class="notice">
+        Historical results are simulations. Fees and
+        slippage are estimated. Missing candle history
+        may shorten the tested period. Historical
+        news, macro and order-book data are not simulated.
+      </div>
+
+    </section>
+
+    <!-- PAPER TRADING -->
+
+    <section class="panel">
+
+      <h2>Paper Trading</h2>
+
+      <p class="muted">
+        Simulate positions without placing real orders.
+      </p>
+
+      <button id="useSignal" class="full">
+        Import Current Signal
+      </button>
+
+      <div class="metric-grid">
+
+        <div class="field">
+
+          <label for="paperDirection">
+            Direction
+          </label>
+
+          <select id="paperDirection">
+
+            <option value="LONG">LONG</option>
+
+            <option value="SHORT">SHORT</option>
+
+          </select>
+
+        </div>
+
+        <div class="field">
+
+          <label for="paperQuantity">
+            Asset Quantity
+          </label>
+
+          <input
+            id="paperQuantity"
+            type="number"
+            min="0.000001"
+            step="any"
+            value="0.001">
+
+        </div>
+
+        <div class="field">
+
+          <label for="paperSL">
+            Stop Loss
+          </label>
+
+          <input
+            id="paperSL"
+            type="number"
+            step="any"
+            placeholder="Stop price">
+
+        </div>
+
+        <div class="field">
+
+          <label for="paperTP">
+            Target
+          </label>
+
+          <input
+            id="paperTP"
+            type="number"
+            step="any"
+            placeholder="Target price">
+
+        </div>
+
+      </div>
+
+      <button
+        id="openPaperTrade"
+        class="primary full">
+        Open Virtual Position
+      </button>
+
+      <p id="paperStatus" class="muted"></p>
+
+      <div class="table-wrap">
+
+        <table>
+
+          <thead>
+
+            <tr>
+              <th>Coin</th>
+              <th>Direction</th>
+              <th>Entry</th>
+              <th>Quantity</th>
+              <th>P&L</th>
+              <th>Status</th>
+            </tr>
+
+          </thead>
+
+          <tbody id="paperTrades"></tbody>
+
+        </table>
+
+      </div>
+
+      <div class="notice">
+        Paper positions use sampled market prices.
+        Intraperiod stop or target touches may be missed.
+        No real orders are executed.
+      </div>
+
+    </section>
+
+    <!-- SIGNAL ACCOUNTABILITY -->
+
+    <section class="panel">
+
+      <h2>Signal Accountability</h2>
+
+      <div
+        id="accountabilityMetrics"
+        class="metric-grid">
+      </div>
+
+      <button
+        id="refreshHistory"
+        class="full">
+        Refresh Signal History
+      </button>
+
+      <div class="table-wrap">
+
+        <table>
+
+          <thead>
+
+            <tr>
+              <th>Time</th>
+              <th>Coin</th>
+              <th>TF</th>
+              <th>Direction</th>
+              <th>Entry</th>
+              <th>SL</th>
+              <th>Target</th>
+              <th>Status</th>
+            </tr>
+
+          </thead>
+
+          <tbody id="signalHistory"></tbody>
+
+        </table>
+
+      </div>
+
+      <div class="notice">
+        Signal history and paper positions are stored
+        in server session memory and reset after a
+        server restart. Signal grading is approximate.
+      </div>
+
+    </section>
+
+    <!-- TELEGRAM -->
+
+    <section class="panel">
+
+      <h2>Telegram Alerts</h2>
+
+      <p class="muted">
+        The backend supports Telegram notifications
+        for newly registered signals and their outcomes.
+      </p>
+
+      <div class="notice">
+        Requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+        in Render environment variables. Analysis must
+        be running for new signals to be detected.
+        Free hosting does not guarantee 24/7 monitoring.
+      </div>
+
+    </section>
+
+  </main>
+
+  <footer>
+
+    DTI — Deeper Trading Intelligence V5
+
+    <br>
+
+    Independent rule-based market research platform.
+
+    <br>
+
+    Not investment advice. Trading involves financial risk.
+
+  </footer>
+
+  <!-- CHART LIBRARY -->
+
+  <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+
+  <script>
+
+    "use strict";
+
+    const $ = id => document.getElementById(id);
+
+    const durations = {
+      "1m": 60,
+      "5m": 300,
+      "15m": 900,
+      "1h": 3600,
+      "4h": 14400,
+      "6h": 21600,
+      "1d": 86400
+    };
+
+    let mode = "BEST_SETUP";
+
+    let latestAnalysis = null;
+
+    let analysisGeneration = 0;
+
+    let analysisBusy = false;
+
+    let backtestBusy = false;
+
+    let marketChart = null;
+
+    let candleSeries = null;
+
+    let volumeSeries = null;
+
+    let equityChart = null;
+
+    let equitySeries = null;
+
+    let chartLines = [];
+
+    let chartSelection = "";
+
+    // ========================================
+    // COMMON UTILITIES
+    // ========================================
+
+    function formatNumber(value, decimals = 2) {
+
+      if (
+        value === null ||
+        value === undefined ||
+        !Number.isFinite(Number(value))
+      ) {
+        return "—";
+      }
+
+      return Number(value).toLocaleString(
+        "en-US",
+        {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals
+        }
+      );
+
+    }
+
+    function formatMoney(value) {
+
+      if (
+        value === null ||
+        value === undefined ||
+        !Number.isFinite(Number(value))
+      ) {
+        return "—";
+      }
+
+      const number = Number(value);
+
+      return (
+        number < 0 ? "-$" : "$"
+      ) + formatNumber(Math.abs(number));
+
+    }
+
+    function formatPercent(value) {
+
+      if (
+        value === null ||
+        value === undefined ||
+        !Number.isFinite(Number(value))
+      ) {
+        return "—";
+      }
+
+      return formatNumber(value) + "%";
+
+    }
+
+    function formatTime(timestamp) {
+
+      if (!timestamp) {
+        return "—";
+      }
+
+      return new Date(
+        timestamp * 1000
+      ).toLocaleString(
+        "en-IN",
+        {
+          timeZone: "Asia/Kolkata",
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit"
+        }
+      );
+
+    }
+
+    function escapeHTML(value) {
+
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+    }
+
+    function colorClass(value) {
+
+      const text = String(value || "");
+
+      if (
+        [
+          "LONG",
+          "BULLISH",
+          "BUY",
+          "WIN",
+          "TARGET_HIT"
+        ].includes(text)
+      ) {
+        return "green";
+      }
+
+      if (
+        [
+          "SHORT",
+          "BEARISH",
+          "SELL",
+          "LOSS",
+          "STOP_HIT"
+        ].includes(text)
+      ) {
+        return "red";
+      }
+
+      return "yellow";
+
+    }
+
+    function setText(id, value, color = "") {
+
+      const element = $(id);
+
+      element.textContent = value ?? "—";
+
+      element.classList.remove(
+        "green",
+        "red",
+        "yellow",
+        "blue"
+      );
+
+      if (color) {
+        element.classList.add(color);
+      }
+
+    }
+
+    function metric(label, value, color = "") {
+
+      return `
+        <div class="metric">
+          <div class="metric-label">
+            ${escapeHTML(label)}
+          </div>
+          <div class="metric-value ${color}">
+            ${escapeHTML(value)}
+          </div>
+        </div>
+      `;
+
+    }
+
+    function selection() {
+
+      return {
+        symbol: $("symbol").value,
+        interval: $("interval").value,
+        mode
+      };
+
+    }
+
+    function queryString() {
+
+      return new URLSearchParams(
+        selection()
+      ).toString();
+
+    }
+
+    function delay(ms) {
+
+      return new Promise(
+        resolve => setTimeout(resolve, ms)
+      );
+
+    }
+
+    async function api(url, options = {}) {
+
+      const response = await fetch(url, {
+        ...options,
+        cache: "no-store",
+        signal: AbortSignal.timeout(60000),
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {})
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data.error) {
+        throw new Error(
+          data.error || `HTTP ${response.status}`
+        );
+      }
+
+      return data;
+
+    }
+
+    // ========================================
+    // CHART INITIALIZATION
+    // ========================================
+
+    function initializeChart() {
+
+      if (!window.LightweightCharts) {
+
+        $("chartError").textContent =
+          "Chart library could not load.";
+
+        return;
+
+      }
+
+      marketChart = LightweightCharts.createChart(
+        $("chart"),
+        {
+          autoSize: true,
+
+          layout: {
+            background: {
+              color: "#101824"
+            },
+            textColor: "#94a3b8"
+          },
+
+          grid: {
+            vertLines: {
+              color: "#1d2939"
+            },
+            horzLines: {
+              color: "#1d2939"
+            }
+          },
+
+          rightPriceScale: {
+            borderColor: "#263449"
+          },
+
+          timeScale: {
+            borderColor: "#263449",
+            timeVisible: true,
+            secondsVisible: false
+          },
+
+          crosshair: {
+            mode: 0
+          }
+        }
+      );
+
+      candleSeries = marketChart.addCandlestickSeries({
+        upColor: "#22d39a",
+        downColor: "#ff586b",
+        borderVisible: false,
+        wickUpColor: "#22d39a",
+        wickDownColor: "#ff586b"
+      });
+
+      volumeSeries = marketChart.addHistogramSeries({
+        priceFormat: {
+          type: "volume"
+        },
+        priceScaleId: ""
+      });
+
+      volumeSeries.priceScale().applyOptions({
+        scaleMargins: {
+          top: 0.85,
+          bottom: 0
+        }
+      });
+
+    }
+
+    function removeChartLines() {
+
+      if (!candleSeries) {
+        return;
+      }
+
+      for (const line of chartLines) {
+        candleSeries.removePriceLine(line);
+      }
+
+      chartLines = [];
+
+    }
+
+    function addChartLine(
+      price,
+      color,
+      title,
+      style = 2
+    ) {
+
+      if (
+        !candleSeries ||
+        !Number.isFinite(Number(price)) ||
+        Number(price) <= 0
+      ) {
+        return;
+      }
+
+      const line = candleSeries.createPriceLine({
+        price: Number(price),
+        color,
+        lineWidth: 1,
+        lineStyle: style,
+        axisLabelVisible: true,
+        title
+      });
+
+      chartLines.push(line);
+
+    }
+
+    function renderChart(data) {
+
+      if (
+        !marketChart ||
+        !candleSeries ||
+        !Array.isArray(data.candles)
+      ) {
+        return;
+      }
+
+      const candles = data.candles
+        .filter(c =>
+          [
+            c.time,
+            c.open,
+            c.high,
+            c.low,
+            c.close
+          ].every(Number.isFinite)
+        )
+        .sort((a, b) => a.time - b.time);
+
+      candleSeries.setData(
+        candles.map(c => ({
+          time: c.time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close
+        }))
+      );
+
+      volumeSeries.setData(
+        candles.map(c => ({
+          time: c.time,
+          value: c.volume || 0,
+          color: c.close >= c.open
+            ? "#22d39a55"
+            : "#ff586b55"
+        }))
+      );
+
+      const key =
+        data.symbol + ":" + data.interval;
+
+      if (chartSelection !== key) {
+
+        chartSelection = key;
+
+        marketChart.timeScale().fitContent();
+
+      }
+
+      removeChartLines();
+
+      const technical =
+        data.lanes?.technical || {};
+
+      addChartLine(
+        technical.support,
+        "#a78bfa",
+        "Support"
+      );
+
+      addChartLine(
+        technical.resistance,
+        "#a78bfa",
+        "Resistance"
+      );
+
+      addChartLine(
+        data.price,
+        "#94a3b8",
+        "Live Price"
+      );
+
+      if (data.direction !== "WAIT") {
+
+        addChartLine(
+          data.entry,
+          "#3478f6",
+          "Entry",
+          0
+        );
+
+        addChartLine(
+          data.stopLoss,
+          "#ff586b",
+          "SL"
+        );
+
+        addChartLine(
+          data.takeProfit1,
+          "#22d39a",
+          "TP1"
+        );
+
+        addChartLine(
+          data.takeProfit2,
+          "#22d39a",
+          "TP2"
+        );
+
+      }
+
+    }
+
+    // ========================================
+    // LIVE ANALYSIS
+    // ========================================
+
+    function renderAnalysis(data) {
+
+      latestAnalysis = data;
+
+      setText(
+        "marketPrice",
+        formatMoney(data.price)
+      );
+
+      setText(
+        "marketStatus",
+        "Coinbase · Last analysis updated"
+      );
+
+      setText(
+        "verdict",
+        data.direction === "WAIT"
+          ? "WAIT · NO ACTIVE ENTRY"
+          : data.direction + " · ACTIVE SETUP",
+        colorClass(data.direction)
+      );
+
+      setText(
+        "setupType",
+        data.setupType || "Conditional scenarios below"
+      );
+
+      setText(
+        "tradeReason",
+        data.reason || "No reason available"
+      );
+
+      const score = data.score;
+
+      setText(
+        "confidence",
+        score === null || score === undefined
+          ? "—"
+          : formatNumber(score, 0) + " / 100"
+      );
+
+      $("confidenceBar").style.width =
+        Math.max(
+          0,
+          Math.min(100, Number(score) || 0)
+        ) + "%";
+
+      setText(
+        "entry",
+        formatNumber(data.entry),
+        "blue"
+      );
+
+      setText(
+        "stopLoss",
+        formatNumber(data.stopLoss),
+        "red"
+      );
+
+      setText(
+        "tp1",
+        formatNumber(data.takeProfit1),
+        "green"
+      );
+
+      setText(
+        "tp2",
+        formatNumber(data.takeProfit2),
+        "green"
+      );
+
+      setText(
+        "riskReward",
+        data.riskReward
+          ? "1 : " + data.riskReward
+          : "—"
+      );
+
+      setText(
+        "marketBias",
+        data.marketBias || "UNKNOWN",
+        colorClass(data.marketBias)
+      );
+
+      setText(
+        "lastAnalysis",
+        "Updated: " + formatTime(data.updatedAt)
+      );
+
+      setText(
+        "signalExpiry",
+        data.activeSignal
+          ? "Signal expires: " +
+            formatTime(data.activeSignal.expiresAt)
+          : ""
+      );
+
+      renderScenarios(data.scenarios || []);
+
+      renderLanes(data.lanes || {});
+
+      renderChart(data);
+
+    }
+
+    async function analyze(force = false) {
+
+      if (analysisBusy && !force) {
+        return;
+      }
+
+      const generation = ++analysisGeneration;
+
+      analysisBusy = true;
+
+      $("analyzeButton").disabled = true;
+
+      $("analyzeButton").textContent =
+        "Analyzing Market...";
+
+      $("analysisError").textContent = "";
+
+      try {
+
+        const data = await api(
+          "/api/analysis?" + queryString()
+        );
+
+        if (generation !== analysisGeneration) {
+          return;
+        }
+
+        renderAnalysis(data);
+
+        refreshHistory().catch(() => {});
+
+      } catch (error) {
+
+        if (generation !== analysisGeneration) {
+          return;
+        }
+
+        latestAnalysis = null;
+
+        clearAnalysis();
+
+        $("analysisError").textContent =
+          error.message;
+
+        setText(
+          "marketStatus",
+          "Market analysis unavailable"
+        );
+
+        setText(
+          "verdict",
+          "DATA UNAVAILABLE",
+          "red"
+        );
+
+      } finally {
+
+        if (generation === analysisGeneration) {
+
+          analysisBusy = false;
+
+          $("analyzeButton").disabled = false;
+
+          $("analyzeButton").textContent =
+            "Analyze Market";
+
+        }
+
+      }
+
+    }
+
+    function clearAnalysis() {
+
+      latestAnalysis = null;
+
+      removeChartLines();
+
+      for (const id of [
+        "entry",
+        "stopLoss",
+        "tp1",
+        "tp2",
+        "riskReward",
+        "confidence",
+        "marketBias",
+        "marketPrice",
+        "technicalBias",
+        "flowBias",
+        "newsBias",
+        "macroBias"
+      ]) {
+        setText(id, "—");
+      }
+
+      for (const id of [
+        "technicalDetails",
+        "flowDetails",
+        "newsDetails",
+        "macroDetails"
+      ]) {
+        setText(id, "Awaiting analysis");
+      }
+
+      setText("verdict", "ANALYZING", "yellow");
+
+      setText("setupType", "Awaiting market data");
+
+      setText("tradeReason", "Loading current selection");
+
+      setText("signalExpiry", "");
+
+      setText("lastAnalysis", "");
+
+      $("confidenceBar").style.width = "0%";
+
+      $("scenarios").textContent =
+        "Waiting for current market analysis.";
+
+      $("structureMetrics").innerHTML = "";
+
+      $("fvgTable").innerHTML = "";
+
+      $("newsList").textContent =
+        "Waiting for current headlines.";
+
+    }
+
+    function changeSelection() {
+
+      clearAnalysis();
+
+      if (candleSeries) {
+        candleSeries.setData([]);
+      }
+
+      if (volumeSeries) {
+        volumeSeries.setData([]);
+      }
+
+      chartSelection = "";
+
+      updateBacktestSelection();
+
+      analyze(true);
+
+    }
+
+    function changeMode(newMode) {
+
+      mode = newMode;
+
+      $("bestMode").classList.toggle(
+        "active",
+        mode === "BEST_SETUP"
+      );
+
+      $("nowMode").classList.toggle(
+        "active",
+        mode === "TRADE_NOW"
+      );
+
+      changeSelection();
+
+    }
+
+    // ========================================
+    // ADVANCE TRADE SCENARIOS
+    // ========================================
+
+    function renderScenarios(scenarios) {
+
+      if (!scenarios.length) {
+
+        $("scenarios").innerHTML =
+          '<p class="muted">No valid conditional scenario.</p>';
+
+        return;
+
+      }
+
+      $("scenarios").innerHTML =
+        scenarios.map(item => {
+
+          const isLong =
+            item.direction === "LONG";
+
+          return `
+            <div class="scenario ${isLong ? "long" : "short"}">
+
+              <div class="scenario-title">
+
+                <strong class="${colorClass(item.direction)}">
+                  ${escapeHTML(item.direction)}
+                  ·
+                  ${escapeHTML(item.type)}
+                </strong>
+
+                <span class="scenario-status">
+                  AWAITING CONFIRMATION
+                </span>
+
+              </div>
+
+              <div class="scenario-levels">
+
+                <div>
+                  <span>Trigger Price</span>
+                  ${formatNumber(item.trigger)}
+                </div>
+
+                <div>
+                  <span>Distance to Trigger</span>
+                  ${formatPercent(item.distancePercent)}
+                </div>
+
+                <div>
+                  <span>Entry Zone</span>
+                  ${formatNumber(item.entryZoneLow)}
+                  –
+                  ${formatNumber(item.entryZoneHigh)}
+                </div>
+
+                <div class="red">
+                  <span>Stop Loss</span>
+                  ${formatNumber(item.stopLoss)}
+                </div>
+
+                <div class="green">
+                  <span>Target 1</span>
+                  ${formatNumber(item.takeProfit1)}
+                </div>
+
+                <div class="green">
+                  <span>Target 2</span>
+                  ${formatNumber(item.takeProfit2)}
+                </div>
+
+              </div>
+
+              <p class="muted">
+                ${escapeHTML(item.condition)}
+              </p>
+
+              <div class="muted">
+                Planned R:R 1 : ${escapeHTML(item.riskReward)}
+              </div>
+
+            </div>
+          `;
+
+        }).join("");
+
+    }
+
+    // ========================================
+    // FOUR-LANE INTELLIGENCE
+    // ========================================
+
+    function renderLanes(lanes) {
+
+      const technical = lanes.technical || {};
+
+      const flow = lanes.flow || {};
+
+      const news = lanes.news || {};
+
+      const macro = lanes.macro || {};
+
+      setText(
+        "technicalBias",
+        technical.bias || "UNAVAILABLE",
+        colorClass(technical.bias)
+      );
+
+      $("technicalDetails").innerHTML = `
+        Structure:
+        ${escapeHTML(technical.structure || "—")}
+        <br>
+        Higher timeframe:
+        ${escapeHTML(technical.higherTimeframeBias || "—")}
+        <br>
+        RSI:
+        ${formatNumber(technical.rsi)}
+        <br>
+        Volume:
+        ${formatNumber(technical.volumeRatio)}x
+        <br>
+        ATR:
+        ${formatNumber(technical.atr)}
+      `;
+
+      setText(
+        "flowBias",
+        flow.status === "AVAILABLE"
+          ? flow.bias
+          : "UNAVAILABLE",
+        colorClass(flow.bias)
+      );
+
+      if (flow.status === "AVAILABLE") {
+
+        $("flowDetails").innerHTML = `
+          Book imbalance:
+          ${formatPercent(flow.imbalance)}
+          <br>
+          Bid liquidity:
+          ${formatMoney(flow.bidLiquidity)}
+          <br>
+          Ask liquidity:
+          ${formatMoney(flow.askLiquidity)}
+          <br>
+          Spread:
+          ${formatPercent(flow.spreadPercent)}
+          <br>
+          Displayed orders, not executed flow.
+        `;
+
+      } else {
+
+        setText(
+          "flowDetails",
+          flow.reason || "Order book unavailable"
+        );
+
+      }
+
+      setText(
+        "newsBias",
+        news.status || "UNAVAILABLE",
+        "yellow"
+      );
+
+      setText(
+        "newsDetails",
+        (news.articles || []).length +
+        " headlines available. Directional sentiment not verified."
+      );
+
+      setText(
+        "macroBias",
+        macro.status || "UNAVAILABLE",
+        "yellow"
+      );
+
+      if (
+        Array.isArray(macro.indicators) &&
+        macro.indicators.length
+      ) {
+
+        $("macroDetails").innerHTML =
+          macro.indicators.map(item => {
+
+            const observation =
+              item.observations?.[0];
+
+            return `
+              ${escapeHTML(item.name)}:
+              ${formatNumber(observation?.value)}
+              <br>
+              ${escapeHTML(observation?.date || "")}
+              <br>
+            `;
+
+          }).join("");
+
+      } else {
+
+        setText(
+          "macroDetails",
+          macro.reason || "Macro data unavailable"
+        );
+
+      }
+
+      renderStructure(technical);
+
+      renderNews(news.articles || []);
+
+    }
+
+    function renderStructure(technical) {
+
+      $("structureMetrics").innerHTML = [
+
+        metric(
+          "Structure",
+          technical.structure || "—",
+          colorClass(technical.structure)
+        ),
+
+        metric(
+          "Support",
+          formatNumber(technical.support)
+        ),
+
+        metric(
+          "Resistance",
+          formatNumber(technical.resistance)
+        ),
+
+        metric(
+          "EMA 9",
+          formatNumber(technical.ema9)
+        ),
+
+        metric(
+          "EMA 20",
+          formatNumber(technical.ema20)
+        ),
+
+        metric(
+          "EMA 50",
+          formatNumber(technical.ema50)
+        ),
+
+        metric(
+          "EMA 200",
+          formatNumber(technical.ema200)
+        ),
+
+        metric(
+          "RSI 14",
+          formatNumber(technical.rsi)
+        ),
+
+        metric(
+          "Break of Structure",
+          technical.bullishBOS
+            ? "Bullish"
+            : technical.bearishBOS
+              ? "Bearish"
+              : "Not detected"
+        ),
+
+        metric(
+          "Change of Character",
+          technical.bullishCHOCH
+            ? "Bullish"
+            : technical.bearishCHOCH
+              ? "Bearish"
+              : "Not detected"
+        ),
+
+        metric(
+          "Liquidity Sweep",
+          technical.bullishSweep
+            ? "Bullish rejection"
+            : technical.bearishSweep
+              ? "Bearish rejection"
+              : "Not detected"
+        ),
+
+        metric(
+          "Momentum",
+          technical.bullishMomentum
+            ? "Bullish"
+            : technical.bearishMomentum
+              ? "Bearish"
+              : "Normal"
+        )
+
+      ].join("");
+
+      const gaps =
+        technical.fairValueGaps || [];
+
+      $("fvgTable").innerHTML =
+        gaps.length
+          ? gaps.map(gap => `
+            <tr>
+              <td class="${colorClass(gap.direction)}">
+                ${escapeHTML(gap.direction)}
+              </td>
+              <td>${formatNumber(gap.low)}</td>
+              <td>${formatNumber(gap.high)}</td>
+              <td>${escapeHTML(formatTime(gap.time))}</td>
+            </tr>
+          `).join("")
+          : '<tr><td colspan="4">No gaps detected</td></tr>';
+
+    }
+
+    // ========================================
+    // MARKET NEWS
+    // ========================================
+
+    function renderNews(articles) {
+
+      const container = $("newsList");
+
+      container.replaceChildren();
+
+      if (!articles.length) {
+
+        container.textContent =
+          "News provider unavailable or no headlines returned.";
+
+        return;
+
+      }
+
+      for (const article of articles) {
+
+        const item = document.createElement("div");
+
+        item.className = "news-item";
+
+        const title = document.createElement("a");
+
+        title.textContent =
+          article.title || "Untitled headline";
+
+        try {
+
+          const url = new URL(article.url);
+
+          if (
+            url.protocol === "https:" ||
+            url.protocol === "http:"
+          ) {
+
+            title.href = url.href;
+
+            title.target = "_blank";
+
+            title.rel = "noopener noreferrer";
+
+          }
+
+        } catch {
+
+          // Invalid article links remain plain text.
+
+        }
+
+        const source =
+          document.createElement("div");
+
+        source.className = "muted";
+
+        source.textContent =
+          article.source || "Unknown source";
+
+        item.append(title, source);
+
+        container.appendChild(item);
+
+      }
+
+    }
+
+    // ========================================
+    // STRATEGY BUILDER
+    // ========================================
+
+    async function buildStrategy() {
+
+      const description =
+        $("strategyDescription").value.trim();
+
+      $("strategyError").textContent = "";
+
+      $("compiledStrategy").hidden = true;
+
+      if (!description) {
+
+        $("strategyError").textContent =
+          "Enter a strategy description.";
+
+        return;
+
+      }
+
+      $("buildStrategy").disabled = true;
+
+      try {
+
+        const strategy = await api(
+          "/api/strategy/build",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              description
+            })
+          }
+        );
+
+        $("compiledStrategy").textContent =
+          JSON.stringify(strategy, null, 2);
+
+        $("compiledStrategy").hidden = false;
+
+        $("backtestType").value = "CUSTOM";
+
+      } catch (error) {
+
+        $("strategyError").textContent =
+          error.message;
+
+      } finally {
+
+        $("buildStrategy").disabled = false;
+
+      }
+
+    }
+
+    // ========================================
+    // HISTORICAL BACKTESTING
+    // ========================================
+
+    function updateBacktestSelection() {
+
+      const selected = selection();
+
+      setText(
+        "backtestSelection",
+        selected.symbol +
+        " · " +
+        selected.interval.toUpperCase() +
+        " · " +
+        selected.mode.replaceAll("_", " ")
+      );
+
+    }
+
+    function lockBacktestControls(locked) {
+
+      for (const id of [
+        "symbol",
+        "interval",
+        "bestMode",
+        "nowMode",
+        "backtestDays",
+        "backtestType",
+        "runBacktest",
+        "strategyDescription",
+        "buildStrategy",
+        "clearStrategy"
+      ]) {
+        $(id).disabled = locked;
+      }
+
+    }
+
+    async function runHistoricalBacktest() {
+
+      if (backtestBusy) {
+        return;
+      }
+
+      const selected = selection();
+
+      const body = {
+        ...selected,
+        days: Number($("backtestDays").value)
+      };
+
+      if ($("backtestType").value === "CUSTOM") {
+
+        body.description =
+          $("strategyDescription").value.trim();
+
+        if (!body.description) {
+
+          setText(
+            "backtestStatus",
+            "Enter a custom strategy first.",
+            "red"
+          );
+
+          return;
+
+        }
+
+      }
+
+      backtestBusy = true;
+
+      lockBacktestControls(true);
+
+      $("backtestResults").hidden = true;
+
+      $("progressBar").style.width = "0%";
+
+      setText(
+        "backtestStatus",
+        "Preparing historical backtest..."
+      );
+
+      try {
+
+        const job = await api(
+          "/api/backtest/start",
+          {
+            method: "POST",
+            body: JSON.stringify(body)
+          }
+        );
+
+        const startedAt = Date.now();
+
+        while (true) {
+
+          await delay(3000);
+
+          const status = await api(
+            "/api/backtest/status?jobId=" +
+            encodeURIComponent(job.jobId)
+          );
+
+          const progress = Math.max(
+            0,
+            Math.min(
+              100,
+              Number(status.progress) || 0
+            )
+          );
+
+          $("progressBar").style.width =
+            progress + "%";
+
+          setText(
+            "backtestStatus",
+            progress + "% · " +
+            (status.message || status.status)
+          );
+
+          if (status.status === "FAILED") {
+
+            throw new Error(
+              status.error ||
+              "Historical backtest failed"
+            );
+
+          }
+
+          if (status.status === "COMPLETED") {
+
+            renderBacktest(status.result);
+
+            setText(
+              "backtestStatus",
+              "100% · Backtest completed",
+              "green"
+            );
+
+            break;
+
+          }
+
+          if (
+            Date.now() - startedAt >
+            30 * 60 * 1000
+          ) {
+
+            throw new Error(
+              "Polling timed out. Server job may still be running."
+            );
+
+          }
+
+        }
+
+      } catch (error) {
+
+        setText(
+          "backtestStatus",
+          error.message,
+          "red"
+        );
+
+      } finally {
+
+        backtestBusy = false;
+
+        lockBacktestControls(false);
+
+      }
+
+    }
+
+    function renderBacktest(result) {
+
+      if (!result || !result.performance) {
+        throw new Error("Invalid backtest result");
+      }
+
+      const performance = result.performance;
+
+      $("backtestResults").hidden = false;
+
+      setText(
+        "backtestPeriod",
+        result.symbol +
+        " · " +
+        result.interval +
+        " · " +
+        formatTime(result.period?.start) +
+        " to " +
+        formatTime(result.period?.end)
+      );
+
+      const profitColor =
+        performance.netProfit >= 0
+          ? "green"
+          : "red";
+
+      $("backtestMetrics").innerHTML = [
+
+        metric(
+          "Total Trades",
+          performance.totalTrades
+        ),
+
+        metric(
+          "Win Rate",
+          formatPercent(performance.winRate)
+        ),
+
+        metric(
+          "Winning Trades",
+          performance.winningTrades,
+          "green"
+        ),
+
+        metric(
+          "Losing Trades",
+          performance.losingTrades,
+          "red"
+        ),
+
+        metric(
+          "Net Profit",
+          formatMoney(performance.netProfit),
+          profitColor
+        ),
+
+        metric(
+          "Return",
+          formatPercent(performance.returnPercent),
+          profitColor
+        ),
+
+        metric(
+          "Profit Factor",
+          formatNumber(performance.profitFactor)
+        ),
+
+        metric(
+          "Max Drawdown",
+          formatPercent(performance.maxDrawdown),
+          "red"
+        ),
+
+        metric(
+          "Initial Capital",
+          formatMoney(performance.initialCapital)
+        ),
+
+        metric(
+          "Final Capital",
+          formatMoney(performance.finalCapital)
+        ),
+
+        metric(
+          "Total Fees",
+          formatMoney(performance.totalFees)
+        ),
+
+        metric(
+          "Expectancy / Trade",
+          formatMoney(performance.expectancy)
+        )
+
+      ].join("");
+
+      const groups = Object.entries(
+        performance.strategyPerformance || {}
+      );
+
+      $("strategyPerformance").innerHTML =
+        groups.length
+          ? groups.map(([name, group]) => `
+            <tr>
+              <td>${escapeHTML(name)}</td>
+              <td>${escapeHTML(group.totalTrades)}</td>
+              <td>${formatPercent(group.winRate)}</td>
+              <td class="${group.netProfit >= 0 ? "green" : "red"}">
+                ${formatMoney(group.netProfit)}
+              </td>
+            </tr>
+          `).join("")
+          : '<tr><td colspan="4">No trades</td></tr>';
+
+      const trades =
+        (result.recentTrades || []).slice().reverse();
+
+      $("backtestTrades").innerHTML =
+        trades.length
+          ? trades.map(trade => `
+            <tr>
+              <td>${escapeHTML(formatTime(trade.entryTime))}</td>
+              <td class="${colorClass(trade.direction)}">
+                ${escapeHTML(trade.direction)}
+              </td>
+              <td>${escapeHTML(trade.setupType || "—")}</td>
+              <td>${formatNumber(trade.entry)}</td>
+              <td>${formatNumber(trade.stopLoss)}</td>
+              <td>${formatNumber(trade.takeProfit2)}</td>
+              <td>${formatNumber(trade.exitPrice)}</td>
+              <td class="${trade.netPnL >= 0 ? "green" : "red"}">
+                ${formatMoney(trade.netPnL)}
+              </td>
+              <td class="${colorClass(trade.result)}">
+                ${escapeHTML(trade.result)}
+              </td>
+            </tr>
+          `).join("")
+          : '<tr><td colspan="9">No trades executed</td></tr>';
+
+      setText(
+        "backtestNote",
+        result.note || ""
+      );
+
+      renderEquity(result.equityCurve || []);
+
+    }
+
+    function renderEquity(points) {
+
+      if (!window.LightweightCharts) {
+        return;
+      }
+
+      if (equityChart) {
+
+        equityChart.remove();
+
+        equityChart = null;
+
+      }
+
+      equityChart = LightweightCharts.createChart(
+        $("equityChart"),
+        {
+          autoSize: true,
+
+          layout: {
+            background: {
+              color: "#101824"
+            },
+            textColor: "#94a3b8"
+          },
+
+          grid: {
+            vertLines: {
+              color: "#1d2939"
+            },
+            horzLines: {
+              color: "#1d2939"
+            }
+          },
+
+          timeScale: {
+            timeVisible: true
+          }
+        }
+      );
+
+      equitySeries = equityChart.addAreaSeries({
+        lineColor: "#3478f6",
+        topColor: "#3478f655",
+        bottomColor: "#3478f600",
+        lineWidth: 2
+      });
+
+      const unique = new Map();
+
+      for (const point of points) {
+
+        if (
+          Number.isFinite(point.time) &&
+          Number.isFinite(point.equity)
+        ) {
+
+          unique.set(point.time, {
+            time: point.time,
+            value: point.equity
+          });
+
+        }
+
+      }
+
+      equitySeries.setData(
+        [...unique.values()].sort(
+          (a, b) => a.time - b.time
+        )
+      );
+
+      equityChart.timeScale().fitContent();
+
+    }
+
+    // ========================================
+    // PAPER TRADING
+    // ========================================
+
+    function importCurrentSignal() {
+
+      const signal = latestAnalysis;
+
+      if (
+        !signal ||
+        !["LONG", "SHORT"].includes(signal.direction)
+      ) {
+
+        setText(
+          "paperStatus",
+          "No active signal to import.",
+          "yellow"
+        );
+
+        return;
+
+      }
+
+      $("paperDirection").value =
+        signal.direction;
+
+      $("paperSL").value =
+        signal.stopLoss;
+
+      $("paperTP").value =
+        signal.takeProfit2;
+
+      setText(
+        "paperStatus",
+        "Signal imported. Review quantity and levels.",
+        "blue"
+      );
+
+    }
+
+    async function openVirtualPosition() {
+
+      $("openPaperTrade").disabled = true;
+
+      try {
+
+        const quantity =
+          Number($("paperQuantity").value);
+
+        const stopLoss =
+          Number($("paperSL").value);
+
+        const target =
+          Number($("paperTP").value);
+
+        if (
+          ![quantity, stopLoss, target]
+            .every(Number.isFinite) ||
+          quantity <= 0 ||
+          stopLoss <= 0 ||
+          target <= 0
+        ) {
+
+          throw new Error(
+            "Enter valid quantity, stop loss and target."
+          );
+
+        }
+
+        const trade = await api(
+          "/api/paper/open",
+          {
+            method: "POST",
+
+            body: JSON.stringify({
+              symbol: $("symbol").value,
+              direction: $("paperDirection").value,
+              quantity,
+              stopLoss,
+              target
+            })
+          }
+        );
+
+        setText(
+          "paperStatus",
+          "Virtual position opened at " +
+          formatMoney(trade.entry),
+          "green"
+        );
+
+        await refreshPaperTrades();
+
+      } catch (error) {
+
+        setText(
+          "paperStatus",
+          error.message,
+          "red"
+        );
+
+      } finally {
+
+        $("openPaperTrade").disabled = false;
+
+      }
+
+    }
+
+    async function refreshPaperTrades() {
+
+      try {
+
+        const trades = await api(
+          "/api/paper/trades"
+        );
+
+        $("paperTrades").innerHTML =
+          trades.length
+            ? trades.slice().reverse().map(trade => `
+              <tr>
+                <td>${escapeHTML(trade.symbol)}</td>
+                <td class="${colorClass(trade.direction)}">
+                  ${escapeHTML(trade.direction)}
+                </td>
+                <td>${formatNumber(trade.entry)}</td>
+                <td>${formatNumber(trade.quantity, 6)}</td>
+                <td class="${Number(trade.pnl) >= 0 ? "green" : "red"}">
+                  ${formatMoney(trade.pnl)}
+                </td>
+                <td class="${colorClass(trade.status)}">
+                  ${escapeHTML(trade.status)}
+                </td>
+              </tr>
+            `).join("")
+            : '<tr><td colspan="6">No virtual positions</td></tr>';
+
+      } catch (error) {
+
+        $("paperTrades").innerHTML =
+          `<tr><td colspan="6" class="red">
+            ${escapeHTML(error.message)}
+          </td></tr>`;
+
+      }
+
+    }
+
+    // ========================================
+    // SIGNAL ACCOUNTABILITY
+    // ========================================
+
+    async function refreshHistory() {
+
+      try {
+
+        const data = await api("/api/signals");
+
+        $("accountabilityMetrics").innerHTML = [
+
+          metric(
+            "Total Signals",
+            data.totalSignals
+          ),
+
+          metric(
+            "Active Signals",
+            data.activeSignals
+          ),
+
+          metric(
+            "Target Hits",
+            data.targetHits,
+            "green"
+          ),
+
+          metric(
+            "Stop Hits",
+            data.stopHits,
+            "red"
+          ),
+
+          metric(
+            "No Result",
+            data.noResult
+          ),
+
+          metric(
+            "Resolved Win Rate",
+            formatPercent(data.resolvedWinRate)
+          )
+
+        ].join("");
+
+        const history = data.history || [];
+
+        $("signalHistory").innerHTML =
+          history.length
+            ? history.map(signal => `
+              <tr>
+                <td>${escapeHTML(formatTime(signal.createdAt))}</td>
+                <td>${escapeHTML(signal.symbol)}</td>
+                <td>${escapeHTML(signal.interval)}</td>
+                <td class="${colorClass(signal.direction)}">
+                  ${escapeHTML(signal.direction)}
+                </td>
+                <td>${formatNumber(signal.entry)}</td>
+                <td>${formatNumber(signal.stopLoss)}</td>
+                <td>${formatNumber(signal.takeProfit2)}</td>
+                <td class="${colorClass(signal.status)}">
+                  ${escapeHTML(signal.status)}
+                </td>
+              </tr>
+            `).join("")
+            : '<tr><td colspan="8">No registered signals</td></tr>';
+
+      } catch (error) {
+
+        $("signalHistory").innerHTML =
+          `<tr><td colspan="8" class="red">
+            ${escapeHTML(error.message)}
+          </td></tr>`;
+
+      }
+
+    }
+
+    // ========================================
+    // LIVE PRICE UPDATES
+    // ========================================
+
+    let priceBusy = false;
+
+    async function refreshPrice() {
+
+      if (priceBusy) {
+        return;
+      }
+
+      priceBusy = true;
+
+      const selectedSymbol =
+        $("symbol").value;
+
+      try {
+
+        const data = await api(
+          "/api/price?symbol=" +
+          encodeURIComponent(selectedSymbol)
+        );
+
+        if (
+          $("symbol").value !== selectedSymbol
+        ) {
+          return;
+        }
+
+        setText(
+          "marketPrice",
+          formatMoney(data.price)
+        );
+
+      } catch {
+
+        setText(
+          "marketStatus",
+          "Live price refresh unavailable"
+        );
+
+      } finally {
+
+        priceBusy = false;
+
+      }
+
+    }
+
+    // ========================================
+    // CANDLE COUNTDOWN
+    // ========================================
+
+    function updateCountdown() {
+
+      const duration =
+        durations[$("interval").value];
+
+      const current =
+        Math.floor(Date.now() / 1000);
+
+      const remaining =
+        duration - current % duration;
+
+      const hours =
+        Math.floor(remaining / 3600);
+
+      const minutes =
+        Math.floor((remaining % 3600) / 60);
+
+      const seconds = remaining % 60;
+
+      const text = [
+        hours,
+        minutes,
+        seconds
+      ].map(
+        value => String(value).padStart(2, "0")
+      ).join(":");
+
+      setText(
+        "countdown",
+        "Candle closes: " + text,
+        "blue"
+      );
+
+    }
+
+    // ========================================
+    // EVENT LISTENERS
+    // ========================================
+
+    $("symbol").addEventListener(
+      "change",
+      changeSelection
+    );
+
+    $("interval").addEventListener(
+      "change",
+      changeSelection
+    );
+
+    $("bestMode").addEventListener(
+      "click",
+      () => changeMode("BEST_SETUP")
+    );
+
+    $("nowMode").addEventListener(
+      "click",
+      () => changeMode("TRADE_NOW")
+    );
+
+    $("analyzeButton").addEventListener(
+      "click",
+      () => analyze(true)
+    );
+
+    $("buildStrategy").addEventListener(
+      "click",
+      buildStrategy
+    );
+
+    $("clearStrategy").addEventListener(
+      "click",
+      () => {
+
+        $("strategyDescription").value = "";
+
+        $("compiledStrategy").hidden = true;
+
+        $("strategyError").textContent = "";
+
+        $("backtestType").value = "DEFAULT";
+
+      }
+    );
+
+    $("runBacktest").addEventListener(
+      "click",
+      runHistoricalBacktest
+    );
+
+    $("useSignal").addEventListener(
+      "click",
+      importCurrentSignal
+    );
+
+    $("openPaperTrade").addEventListener(
+      "click",
+      openVirtualPosition
+    );
+
+    $("refreshHistory").addEventListener(
+      "click",
+      refreshHistory
+    );
+
+    // ========================================
+    // START DASHBOARD
+    // ========================================
+
+    initializeChart();
+
+    updateBacktestSelection();
+
+    updateCountdown();
+
+    analyze();
+
+    refreshPaperTrades();
+
+    refreshHistory();
+
+    setInterval(
+      updateCountdown,
+      1000
+    );
+
+    setInterval(
+      refreshPrice,
+      5000
+    );
+
+    setInterval(
+      () => analyze(),
+      30000
+    );
+
+    setInterval(
+      refreshPaperTrades,
+      15000
+    );
+
+    setInterval(
+      refreshHistory,
+      30000
+    );
+
+  </script>
+
+</body>
+
+</html>
