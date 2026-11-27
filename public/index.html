@@ -139,7 +139,141 @@
 #bestSetupPlans details {
   margin-top: 8px;
 }
+/* HISTORICAL BACKTEST DASHBOARD */
 
+.backtest-card {
+  margin-top: 16px;
+}
+
+.backtest-card h2 {
+  font-size: 19px;
+  margin: 0 0 10px;
+}
+
+.backtest-description {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+#runBacktestBtn {
+  width: 100%;
+  background: #2563eb;
+  color: white;
+  font-weight: 700;
+  margin: 12px 0;
+}
+
+#runBacktestBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.backtest-progress {
+  height: 8px;
+  background: #334155;
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+
+#backtestProgressBar {
+  width: 0%;
+  height: 100%;
+  background: #38bdf8;
+  transition: width 0.4s ease;
+}
+
+#backtestStatus {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.backtest-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.backtest-metric {
+  background: #172235;
+  border: 1px solid #26364c;
+  border-radius: 10px;
+  padding: 12px;
+  min-width: 0;
+}
+
+.backtest-metric span {
+  display: block;
+  color: #94a3b8;
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+
+.backtest-metric strong {
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
+#backtestPeriod {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.6;
+}
+
+#backtestEquityChart {
+  width: 100%;
+  height: 240px;
+  background: #101827;
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+
+.backtest-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.backtest-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.backtest-table th,
+.backtest-table td {
+  padding: 10px;
+  text-align: left;
+  border-bottom: 1px solid #26364c;
+}
+
+.backtest-table th {
+  color: #94a3b8;
+}
+
+.bt-positive {
+  color: #4ade80;
+}
+
+.bt-negative {
+  color: #fb7185;
+}
+
+.bt-neutral {
+  color: #94a3b8;
+}
+
+.backtest-disclaimer {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.6;
+  margin-top: 14px;
+}
   </style>
 </head>
 <body>
@@ -278,6 +412,150 @@
   <p id="tradeNote" class="muted"></p>
 
   <button onclick="loadAnalysis()">Refresh Analysis</button>
+</section>
+<!-- HISTORICAL BACKTEST DASHBOARD -->
+
+<section class="card backtest-card">
+
+  <h2>📊 Historical Backtesting</h2>
+
+  <p class="backtest-description">
+    Test the selected market, timeframe and
+    trading strategy using historical market data.
+  </p>
+
+  <div id="backtestSelection"
+       class="backtest-description">
+    Selected market and strategy
+  </div>
+
+  <button id="runBacktestBtn" type="button">
+    ▶ Run Historical Backtest
+  </button>
+
+  <div class="backtest-progress">
+    <div id="backtestProgressBar"></div>
+  </div>
+
+  <div id="backtestStatus">
+    Ready to run historical backtest.
+  </div>
+
+  <div id="backtestResults" style="display:none;">
+
+    <p id="backtestPeriod"></p>
+
+    <div class="backtest-grid">
+
+      <div class="backtest-metric">
+        <span>Historical Win Rate</span>
+        <strong id="btWinRate">—</strong>
+      </div>
+
+      <div class="backtest-metric">
+        <span>Total Trades</span>
+        <strong id="btTotalTrades">—</strong>
+      </div>
+
+      <div class="backtest-metric">
+        <span>Winning Trades</span>
+        <strong id="btWins" class="bt-positive">—</strong>
+      </div>
+
+      <div class="backtest-metric">
+        <span>Losing Trades</span>
+        <strong id="btLosses" class="bt-negative">—</strong>
+      </div>
+
+      <div class="backtest-metric">
+        <span>Net Profit / Loss</span>
+        <strong id="btNetProfit">—</strong>
+      </div>
+
+      <div class="backtest-metric">
+        <span>Total Return</span>
+        <strong id="btReturn">—</strong>
+      </div>
+
+      <div class="backtest-metric">
+        <span>Profit Factor</span>
+        <strong id="btProfitFactor">—</strong>
+      </div>
+
+      <div class="backtest-metric">
+        <span>Maximum Drawdown</span>
+        <strong id="btDrawdown" class="bt-negative">—</strong>
+      </div>
+
+      <div class="backtest-metric">
+        <span>Initial Capital</span>
+        <strong id="btInitialCapital">—</strong>
+      </div>
+
+      <div class="backtest-metric">
+        <span>Final Capital</span>
+        <strong id="btFinalCapital">—</strong>
+      </div>
+
+      <div class="backtest-metric">
+        <span>Total Trading Fees</span>
+        <strong id="btFees">—</strong>
+      </div>
+
+      <div class="backtest-metric">
+        <span>Expectancy Per Trade</span>
+        <strong id="btExpectancy">—</strong>
+      </div>
+
+    </div>
+
+    <h3>📈 Equity Curve</h3>
+
+    <div id="backtestEquityChart"></div>
+
+    <details>
+
+      <summary style="cursor:pointer;color:#93c5fd;">
+        View Recent Historical Trades
+      </summary>
+
+      <div class="backtest-table-wrap">
+
+        <table class="backtest-table">
+
+          <thead>
+            <tr>
+              <th>Entry Date</th>
+              <th>Direction</th>
+              <th>Entry</th>
+              <th>SL</th>
+              <th>TP2</th>
+              <th>Exit</th>
+              <th>Net P/L</th>
+              <th>Result</th>
+              <th>Exit Reason</th>
+            </tr>
+          </thead>
+
+          <tbody id="backtestTradeRows"></tbody>
+
+        </table>
+
+      </div>
+
+    </details>
+
+    <p id="backtestSettings"
+       class="backtest-description"></p>
+
+  </div>
+
+  <p class="backtest-disclaimer">
+    Historical results are simulated and do not
+    guarantee future performance. Fees and slippage
+    are estimated. Actual execution may differ.
+  </p>
+
 </section>
   </main>
 <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
@@ -947,7 +1225,612 @@ document.getElementById("symbol")
 
 document.getElementById("timeframe")
   .addEventListener("change", loadChart);
+// HISTORICAL BACKTEST API INTEGRATION
 
+let backtestRunningUI = false;
+
+const runBacktestBtn =
+  document.getElementById("runBacktestBtn");
+
+function getBacktestSelection() {
+
+  return {
+    symbol: document.getElementById("symbol").value,
+    interval: document.getElementById("timeframe").value,
+    mode: analysisMode
+  };
+}
+
+function updateBacktestSelection() {
+
+  const selection = getBacktestSelection();
+
+  document.getElementById(
+    "backtestSelection"
+  ).textContent =
+    selection.symbol + " · " +
+    selection.interval.toUpperCase() + " · " +
+    selection.mode.replaceAll("_", " ");
+}
+
+function updateBacktestProgress(progress, message) {
+
+  const safeProgress = Math.max(
+    0,
+    Math.min(100, Number(progress) || 0)
+  );
+
+  document.getElementById(
+    "backtestProgressBar"
+  ).style.width = safeProgress + "%";
+
+  document.getElementById(
+    "backtestStatus"
+  ).textContent =
+    safeProgress + "% · " + message;
+}
+// AUTOMATIC BACKTEST STATUS TRACKING
+// HISTORICAL PERFORMANCE DISPLAY
+
+function formatBacktestNumber(value, decimals = 2) {
+
+  if (
+    value == null ||
+    !Number.isFinite(Number(value))
+  ) {
+    return "—";
+  }
+
+  return Number(value).toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  });
+}
+
+function formatBacktestMoney(value) {
+
+  if (
+    value == null ||
+    !Number.isFinite(Number(value))
+  ) {
+    return "—";
+  }
+
+  return (Number(value) < 0 ? "-$" : "$") +
+    formatBacktestNumber(Math.abs(Number(value)));
+}
+
+function formatBacktestDate(timestamp) {
+
+  if (
+    timestamp == null ||
+    !Number.isFinite(Number(timestamp))
+  ) {
+    return "—";
+  }
+
+  return new Date(
+    Number(timestamp) * 1000
+  ).toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata"
+  });
+}
+
+function setBacktestMetric(id, value, colorValue = null) {
+
+  const element = document.getElementById(id);
+
+  element.textContent = value;
+
+  if (colorValue != null) {
+
+    element.style.color =
+      Number(colorValue) > 0 ? "#4ade80" :
+      Number(colorValue) < 0 ? "#fb7185" :
+      "#94a3b8";
+  }
+}
+// HISTORICAL EQUITY CURVE CHART
+
+let backtestEquityChart = null;
+let backtestEquitySeries = null;
+
+function renderBacktestEquityChart(equityCurve) {
+
+  const container = document.getElementById(
+    "backtestEquityChart"
+  );
+
+  if (backtestEquityChart) {
+
+    backtestEquityChart.remove();
+
+    backtestEquityChart = null;
+    backtestEquitySeries = null;
+  }
+
+  container.innerHTML = "";
+
+  // VALIDATE AND REMOVE DUPLICATE TIMESTAMPS
+
+  const uniquePoints = new Map();
+
+  equityCurve.forEach(point => {
+
+    const time = Number(point.time);
+    const value = Number(point.equity);
+
+    if (
+      point.time != null &&
+      point.equity != null &&
+      Number.isFinite(time) &&
+      Number.isFinite(value) &&
+      time > 0
+    ) {
+
+      uniquePoints.set(time, {
+        time,
+        value
+      });
+    }
+  });
+
+  const chartData = [...uniquePoints.values()]
+    .sort((a, b) => a.time - b.time);
+
+  if (!chartData.length) {
+
+    container.textContent =
+      "Equity curve data unavailable.";
+
+    return;
+  }
+
+  if (typeof LightweightCharts === "undefined") {
+
+    container.textContent =
+      "Chart library unavailable.";
+
+    return;
+  }
+
+  backtestEquityChart =
+    LightweightCharts.createChart(container, {
+
+      width: container.clientWidth,
+      height: 240,
+
+      layout: {
+        background: {
+          color: "#101827"
+        },
+        textColor: "#94a3b8"
+      },
+
+      grid: {
+        vertLines: {
+          color: "#1e293b"
+        },
+        horzLines: {
+          color: "#1e293b"
+        }
+      },
+
+      rightPriceScale: {
+        borderColor: "#334155"
+      },
+
+      timeScale: {
+        borderColor: "#334155",
+        timeVisible: true,
+        secondsVisible: false
+      }
+    });
+
+  const isProfitable =
+    chartData[chartData.length - 1].value >=
+    chartData[0].value;
+
+  backtestEquitySeries =
+    backtestEquityChart.addAreaSeries({
+
+      lineColor: isProfitable
+        ? "#22c55e"
+        : "#ef4444",
+
+      topColor: isProfitable
+        ? "rgba(34,197,94,0.35)"
+        : "rgba(239,68,68,0.35)",
+
+      bottomColor: "rgba(16,24,39,0.05)",
+
+      lineWidth: 2,
+
+      priceFormat: {
+        type: "price",
+        precision: 2,
+        minMove: 0.01
+      }
+    });
+
+  backtestEquitySeries.setData(chartData);
+
+  backtestEquityChart.timeScale().fitContent();
+}
+
+window.addEventListener("resize", () => {
+
+  if (backtestEquityChart) {
+
+    const container = document.getElementById(
+      "backtestEquityChart"
+    );
+
+    backtestEquityChart.applyOptions({
+      width: container.clientWidth
+    });
+  }
+});
+// HISTORICAL TRADE HISTORY
+
+function renderBacktestTradeHistory(trades) {
+
+  const tbody = document.getElementById(
+    "backtestTradeRows"
+  );
+
+  tbody.innerHTML = "";
+
+  if (!Array.isArray(trades) || !trades.length) {
+
+    const row = tbody.insertRow();
+    const cell = row.insertCell();
+
+    cell.colSpan = 9;
+    cell.textContent =
+      "No trades generated during this period.";
+
+    cell.style.color = "#94a3b8";
+
+    return;
+  }
+
+  const recentTrades = [...trades]
+    .sort((a, b) => b.entryTime - a.entryTime)
+    .slice(0, 100);
+
+  recentTrades.forEach(trade => {
+
+    const row = document.createElement("tr");
+
+    const values = [
+      formatBacktestDate(trade.entryTime),
+      trade.direction || "—",
+      formatBacktestMoney(trade.entry),
+      formatBacktestMoney(trade.stopLoss),
+      formatBacktestMoney(trade.tp2),
+      formatBacktestMoney(trade.exitPrice),
+      formatBacktestMoney(trade.netPnL),
+      trade.result || "—",
+      String(trade.exitReason || "—")
+        .replaceAll("_", " ")
+    ];
+
+    values.forEach((value, index) => {
+
+      const cell = document.createElement("td");
+
+      cell.textContent = value;
+
+      if (index === 1) {
+
+        cell.style.color =
+          trade.direction === "BUY" ? "#4ade80" :
+          trade.direction === "SELL" ? "#fb7185" :
+          "#94a3b8";
+
+        cell.style.fontWeight = "700";
+      }
+
+      if (index === 6 || index === 7) {
+
+        cell.style.color =
+          Number(trade.netPnL) > 0 ? "#4ade80" :
+          Number(trade.netPnL) < 0 ? "#fb7185" :
+          "#94a3b8";
+
+        cell.style.fontWeight = "700";
+      }
+
+      row.appendChild(cell);
+    });
+
+    tbody.appendChild(row);
+  });
+}
+function renderBacktestResults(result) {
+
+  const p = result.performance;
+
+  if (!p) {
+    throw new Error("Performance data unavailable");
+  }
+
+  document.getElementById(
+    "backtestResults"
+  ).style.display = "block";
+
+  document.getElementById(
+    "backtestPeriod"
+  ).textContent =
+    result.symbol + " · " +
+    result.interval.toUpperCase() + " · " +
+    result.mode.replaceAll("_", " ") +
+    " | " +
+    formatBacktestDate(result.period?.start) +
+    " to " +
+    formatBacktestDate(result.period?.end) +
+    " (IST)";
+
+  setBacktestMetric(
+    "btWinRate",
+    p.winRate == null
+      ? "—"
+      : formatBacktestNumber(p.winRate) + "%"
+  );
+
+  setBacktestMetric(
+    "btTotalTrades",
+    formatBacktestNumber(p.totalTrades, 0)
+  );
+
+  setBacktestMetric(
+    "btWins",
+    formatBacktestNumber(p.winningTrades, 0)
+  );
+
+  setBacktestMetric(
+    "btLosses",
+    formatBacktestNumber(p.losingTrades, 0)
+  );
+
+  setBacktestMetric(
+    "btNetProfit",
+    formatBacktestMoney(p.netProfit),
+    p.netProfit
+  );
+
+  setBacktestMetric(
+    "btReturn",
+    p.returnPercent == null
+      ? "—"
+      : formatBacktestNumber(p.returnPercent) + "%",
+    p.returnPercent
+  );
+
+  setBacktestMetric(
+    "btProfitFactor",
+    formatBacktestNumber(p.profitFactor)
+  );
+
+  setBacktestMetric(
+    "btDrawdown",
+    p.maxDrawdown == null
+      ? "—"
+      : formatBacktestNumber(p.maxDrawdown) + "%"
+  );
+
+  setBacktestMetric(
+    "btInitialCapital",
+    formatBacktestMoney(p.initialCapital)
+  );
+
+  setBacktestMetric(
+    "btFinalCapital",
+    formatBacktestMoney(p.finalCapital)
+  );
+
+  setBacktestMetric(
+    "btFees",
+    formatBacktestMoney(p.totalFees)
+  );
+
+  setBacktestMetric(
+    "btExpectancy",
+    formatBacktestMoney(p.expectancy),
+    p.expectancy
+  );
+
+  const settings = result.settings || {};
+
+  document.getElementById(
+    "backtestSettings"
+  ).textContent =
+    "Risk per trade: " +
+    formatBacktestNumber(
+      settings.riskPerTrade * 100
+    ) + "% | Fee per side: " +
+    formatBacktestNumber(
+      settings.feeRate * 100, 3
+    ) + "% | Slippage per side: " +
+    formatBacktestNumber(
+      settings.slippageRate * 100, 3
+    ) + "% | Breakeven trades: " +
+    formatBacktestNumber(p.breakevenTrades, 0);
+
+  renderBacktestEquityChart(
+    result.equityCurve || []
+  );
+
+  renderBacktestTradeHistory(
+    result.recentTrades || []
+  );
+}
+async function pollBacktestStatus(jobId) {
+
+  const startedAt = Date.now();
+
+  const timeout = 30 * 60 * 1000;
+
+  while (Date.now() - startedAt < timeout) {
+
+    const response = await fetch(
+      "/api/backtest/status?jobId=" +
+      encodeURIComponent(jobId),
+      {
+        cache: "no-store"
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+
+      throw new Error(
+        data.error || "Unable to check backtest status"
+      );
+    }
+
+    if (data.status === "FAILED") {
+
+      throw new Error(
+        data.error || "Historical backtest failed"
+      );
+    }
+
+    if (data.status === "COMPLETED") {
+
+      if (!data.result) {
+        throw new Error("Backtest results missing");
+      }
+
+      renderBacktestResults(data.result);
+
+      updateBacktestProgress(
+        100,
+        "Historical backtest completed successfully"
+      );
+
+      return;
+    }
+
+    updateBacktestProgress(
+      data.progress,
+      data.message || "Processing historical data..."
+    );
+
+    await new Promise(resolve =>
+      setTimeout(resolve, 3000)
+    );
+  }
+
+  throw new Error(
+    "Backtest monitoring timed out. " +
+    "The server job may still be running. " +
+    "Try again with the same selection."
+  );
+}
+async function startHistoricalBacktest() {
+
+  if (backtestRunningUI) return;
+
+  backtestRunningUI = true;
+
+  const selection = getBacktestSelection();
+
+  runBacktestBtn.disabled = true;
+  document.getElementById("symbol").disabled = true;
+document.getElementById("timeframe").disabled = true;
+
+bestSetupBtn.disabled = true;
+tradeNowBtn.disabled = true;
+  runBacktestBtn.textContent = "Running Backtest...";
+
+  document.getElementById(
+    "backtestResults"
+  ).style.display = "none";
+
+  updateBacktestProgress(
+    0,
+    "Starting historical backtest..."
+  );
+
+  try {
+
+    const response = await fetch(
+      "/api/backtest/start",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(selection)
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || "Unable to start backtest"
+      );
+    }
+
+    if (!data.jobId) {
+      throw new Error("Backtest job ID missing");
+    }
+
+    await pollBacktestStatus(data.jobId);
+
+  } catch (error) {
+
+    document.getElementById(
+      "backtestStatus"
+    ).textContent = "❌ " + error.message;
+
+  } finally {
+
+    backtestRunningUI = false;
+
+    runBacktestBtn.disabled = false;
+document.getElementById("symbol").disabled = false;
+document.getElementById("timeframe").disabled = false;
+
+bestSetupBtn.disabled = false;
+tradeNowBtn.disabled = false;
+    runBacktestBtn.textContent =
+      "▶ Run Historical Backtest";
+  }
+}
+
+runBacktestBtn.addEventListener(
+  "click",
+  startHistoricalBacktest
+);
+
+document.getElementById("symbol")
+  .addEventListener(
+    "change",
+    updateBacktestSelection
+  );
+
+document.getElementById("timeframe")
+  .addEventListener(
+    "change",
+    updateBacktestSelection
+  );
+
+bestSetupBtn.addEventListener(
+  "click",
+  updateBacktestSelection
+);
+
+tradeNowBtn.addEventListener(
+  "click",
+  updateBacktestSelection
+);
+
+updateBacktestSelection();
 loadChart();
 setInterval(loadChart, 30000);
   </script>
