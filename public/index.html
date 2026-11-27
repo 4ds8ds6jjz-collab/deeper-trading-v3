@@ -1662,6 +1662,184 @@ function renderBacktestTradeHistory(trades) {
     tbody.appendChild(row);
   });
 }
+function renderBacktestDiagnostics(p) {
+
+  const parent = document.getElementById(
+    "backtestResults"
+  );
+
+  let panel = document.getElementById(
+    "backtestDiagnostics"
+  );
+
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "backtestDiagnostics";
+    panel.className = "analysis-compact";
+    parent.appendChild(panel);
+  }
+
+  const d = p.diagnostics;
+  const strategies = p.strategyPerformance;
+
+  if (!d || !strategies) {
+    panel.textContent = "Diagnostics unavailable.";
+    return;
+  }
+
+  const number = value =>
+    value == null
+      ? "—"
+      : formatBacktestNumber(value, 0);
+
+  const percent = value =>
+    value == null
+      ? "—"
+      : formatBacktestNumber(value) + "%";
+
+  const money = value =>
+    value == null
+      ? "—"
+      : formatBacktestMoney(value);
+
+  let html = `
+    <h3>Strategy Performance</h3>
+    <p>Historical performance by entry type</p>
+  `;
+
+  for (const type of [
+    "BREAKOUT",
+    "PULLBACK",
+    "TREND_ENTRY",
+    "UNKNOWN"
+  ]) {
+
+    const s = strategies[type];
+
+    if (!s || !s.totalTrades) continue;
+
+    const color = s.netProfit >= 0
+      ? "#22c55e"
+      : "#ef4444";
+
+    html += `
+      <div style="
+        padding:12px;
+        margin:10px 0;
+        border:1px solid #334155;
+        border-radius:10px;
+      ">
+        <h3>${type.replaceAll("_", " ")}</h3>
+
+        <p>Total Trades: ${number(s.totalTrades)}</p>
+        <p>Wins: ${number(s.winningTrades)}</p>
+        <p>Losses: ${number(s.losingTrades)}</p>
+        <p>Win Rate: ${percent(s.winRate)}</p>
+
+        <p style="color:${color}">
+          Net Profit: ${money(s.netProfit)}
+        </p>
+
+        <p>Profit Factor:
+          ${s.profitFactor == null
+            ? "—"
+            : formatBacktestNumber(s.profitFactor)}
+        </p>
+
+        <p>Expectancy: ${money(s.expectancy)}</p>
+        <p>Fees: ${money(s.totalFees)}</p>
+      </div>
+    `;
+  }
+
+  html += `
+    <h3>Signal Statistics</h3>
+
+    <p>Entry Candles Analysed:
+      ${number(d.entryCandlesAnalysed)}</p>
+
+    <p>Exit Candles Analysed:
+      ${number(d.exitCandlesAnalysed)}</p>
+
+    <p style="color:#22c55e">
+      BUY Signals: ${number(d.buySignals)}
+    </p>
+
+    <p style="color:#ef4444">
+      SELL Signals: ${number(d.sellSignals)}
+    </p>
+
+    <p>WAIT Signals: ${number(d.waitSignals)}</p>
+
+    <p>Unavailable Signals:
+      ${number(d.unavailableSignals)}</p>
+
+    <p>Executed Trades:
+      ${number(d.executedTrades)}</p>
+
+    <p>Rejected Entries:
+      ${number(d.rejectedEntries)}</p>
+
+    <h3 style="margin-top:20px">
+      Filter Diagnostics
+    </h3>
+
+    <p>Failed conditions on WAIT candles</p>
+  `;
+
+  const filters = [
+    ["Sideways Market", d.sidewaysCandles],
+    ["EMA Trend", d.emaConditionFailed],
+    ["RSI", d.rsiConditionFailed],
+    ["Volume", d.volumeConditionFailed],
+    ["Market Structure", d.structureConditionFailed],
+    ["Higher Timeframe", d.higherTimeframeConditionFailed],
+    ["Breakout", d.breakoutConditionFailed]
+  ];
+
+  filters.sort(
+    (a, b) => (b[1] || 0) - (a[1] || 0)
+  );
+
+  for (const [name, count] of filters) {
+
+    const rate = d.waitSignals > 0
+      ? (count || 0) / d.waitSignals * 100
+      : 0;
+
+    html += `
+      <div style="margin:12px 0">
+
+        <p>${name}: ${number(count)}
+          (${percent(rate)})</p>
+
+        <div style="
+          background:#334155;
+          height:7px;
+          border-radius:6px;
+          overflow:hidden;
+        ">
+          <div style="
+            background:#f59e0b;
+            height:100%;
+            width:${Math.min(100, rate)}%;
+          "></div>
+        </div>
+
+      </div>
+    `;
+  }
+
+  html += `
+    <p style="opacity:0.7;font-size:11px">
+      Multiple conditions can fail on the same candle.
+      These statistics are not exclusive rejection reasons.
+      Volume and breakout checks apply to BEST SETUP mode.
+    </p>
+  `;
+
+  panel.innerHTML = html;
+}
 function renderBacktestResults(result) {
 
   const p = result.performance;
@@ -1779,6 +1957,7 @@ function renderBacktestResults(result) {
   renderBacktestTradeHistory(
     result.recentTrades || []
   );
+  renderBacktestDiagnostics(p);
 }
 async function pollBacktestStatus(jobId) {
 
