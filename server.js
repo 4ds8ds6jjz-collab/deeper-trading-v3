@@ -1159,11 +1159,13 @@ if (
 ) {
 
   if (bullishPullbackConfirmed) {
-  direction = "BUY";
-  setupType = "PULLBACK";
-} else if (bearishPullbackConfirmed) {
-  direction = "SELL";
-  setupType = "PULLBACK";
+    direction = "BUY";
+    setupType = "PULLBACK";
+  } else if (bearishPullbackConfirmed) {
+    direction = "SELL";
+    setupType = "PULLBACK";
+  }
+
 }
 
 // PULLBACK RISK MANAGEMENT
@@ -2597,17 +2599,19 @@ if (!signal) {
 
     // NEXT CANDLE ENTRY
 
-    activeTrade = createBacktestTrade(
-      signal,
-      candles[i + 1],
-      capital,
-      settings
-    );
-  }
+activeTrade = createBacktestTrade(
+  signal,
+  candles[i + 1],
+  capital,
+  settings
+);
+
 if (activeTrade) {
   diagnostics.executedTrades++;
 } else {
   diagnostics.rejectedEntries++;
+}
+
 }
   // CLOSE REMAINING TRADE AT END OF TEST
 
