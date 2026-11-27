@@ -1293,7 +1293,7 @@ risk
 }
 
 app.get("/api/analysis", async (req, res) => {
-  
+    try {
     const symbol = req.query.symbol || "BTCUSDT";
     const interval = req.query.interval || "15m";
     const mode = String(req.query.mode || "BEST_SETUP").toUpperCase();
