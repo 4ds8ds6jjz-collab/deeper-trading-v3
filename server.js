@@ -299,9 +299,31 @@ async function fetchHistoricalCandles(symbol, interval) {
     );
   }
 
-  return [...candleMap.values()]
-    .sort((a, b) => a.time - b.time)
-    .slice(-limit);
+  const sortedCandles = [...candleMap.values()]
+  .sort((a, b) => a.time - b.time)
+  .slice(-limit);
+
+for (let i = 1; i < sortedCandles.length; i++) {
+
+  const previous = sortedCandles[i - 1];
+  const current = sortedCandles[i];
+
+  const gap = current.time - previous.time;
+
+  if (gap !== granularity) {
+
+    console.warn("HISTORICAL CANDLE GAP", {
+      symbol,
+      interval,
+      previous: new Date(previous.time * 1000).toISOString(),
+      current: new Date(current.time * 1000).toISOString(),
+      missingCandles: gap / granularity - 1
+    });
+
+  }
+}
+
+return sortedCandles;
 }
 // HISTORICAL CACHE ENGINE
 
