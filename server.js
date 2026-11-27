@@ -1029,6 +1029,49 @@ function evaluateStrategy(
   ) {
     direction = "WAIT";
   }
+  // STRATEGY DIAGNOSTICS
+
+let setupType = direction === "WAIT"
+  ? "NO_SETUP"
+  : mode === "BEST_SETUP"
+    ? "BREAKOUT"
+    : "TREND_ENTRY";
+
+const diagnosticChecks = {
+  bullishEMA: ema9 > ema20,
+  bearishEMA: ema9 < ema20,
+
+  bullishRSI:
+    rsi > adaptiveSettings.rsiBuy,
+
+  bearishRSI:
+    rsi < adaptiveSettings.rsiSell,
+
+  volumeConfirmed:
+    volumeRatio !== null &&
+    volumeRatio >=
+      adaptiveSettings.minimumVolumeRatio,
+
+  bullishStructure:
+    marketStructure === "BULLISH",
+
+  bearishStructure:
+    marketStructure === "BEARISH",
+
+  bullishBreakout: confirmedBuyBreakout,
+  bearishBreakout: confirmedSellBreakdown,
+
+  bullishTrend: bullishTrendConfirmed,
+  bearishTrend: bearishTrendConfirmed,
+
+  sidewaysMarket: isSidewaysMarket,
+
+  higherTimeframeBullish:
+    higherTimeframeBias === "BULLISH",
+
+  higherTimeframeBearish:
+    higherTimeframeBias === "BEARISH"
+};
   // SHARED RISK MANAGEMENT
 
   let entry = null;
@@ -1116,12 +1159,13 @@ if (
 ) {
 
   if (bullishPullbackConfirmed) {
-    direction = "BUY";
-  } else if (bearishPullbackConfirmed) {
-    direction = "SELL";
-  }
-
+  direction = "BUY";
+  setupType = "PULLBACK";
+} else if (bearishPullbackConfirmed) {
+  direction = "SELL";
+  setupType = "PULLBACK";
 }
+
 // PULLBACK RISK MANAGEMENT
 
 if (
@@ -1305,6 +1349,12 @@ if (
     bullishTrendConfirmed,
         bearishTrendConfirmed,
 planningBias,
+setupType: direction === "WAIT"
+  ? "NO_SETUP"
+  : setupType,
+  
+diagnosticChecks,
+
 potentialSetup,
 entry,
 stopLoss,
@@ -2011,6 +2061,8 @@ function createBacktestTrade(
 
   return {
     direction: signal.direction,
+    setupType: signal.setupType || "UNKNOWN",
+diagnosticChecks: signal.diagnosticChecks || {},
     entry,
     stopLoss,
     tp1,
@@ -2259,7 +2311,30 @@ if (candles.length < settings.warmupCandles + 2) {
   let activeTrade = null;
 
   const trades = [];
+const diagnostics = {
+  entryCandlesAnalysed: 0,
+  exitCandlesAnalysed: 0,
 
+  buySignals: 0,
+  sellSignals: 0,
+  waitSignals: 0,
+  unavailableSignals: 0,
+
+  sidewaysCandles: 0,
+  emaConditionFailed: 0,
+  rsiConditionFailed: 0,
+  volumeConditionFailed: 0,
+  structureConditionFailed: 0,
+  higherTimeframeConditionFailed: 0,
+  breakoutConditionFailed: 0,
+
+  breakoutSignals: 0,
+  pullbackSignals: 0,
+  trendEntrySignals: 0,
+
+  executedTrades: 0,
+  rejectedEntries: 0
+};
   const equityCurve = [{
    time: candles[firstEligibleIndex - 1].time,
     equity: capital
@@ -2344,7 +2419,7 @@ if (candles.length < settings.warmupCandles + 2) {
    // OPPOSITE SIGNAL EXIT
 
 if (activeTrade) {
-
+diagnostics.exitCandlesAnalysed++;
   const exitSignal = evaluateStrategy(
     candles.slice(
       Math.max(0, i - 199),
@@ -2435,7 +2510,84 @@ if (capital <= 0) {
       mode,
       higherTimeframeBias
     );
+diagnostics.entryCandlesAnalysed++;
+if (signal && signal.direction === "WAIT") {
 
+  const checks = signal.diagnosticChecks || {};
+
+  const bullish = checks.bullishEMA === true;
+  const bearish = checks.bearishEMA === true;
+
+  if (checks.sidewaysMarket) {
+    diagnostics.sidewaysCandles++;
+  }
+
+  if (
+    !checks.bullishTrend &&
+    !checks.bearishTrend
+  ) {
+    diagnostics.emaConditionFailed++;
+  }
+
+  if (
+    (bullish && !checks.bullishRSI) ||
+    (bearish && !checks.bearishRSI)
+  ) {
+    diagnostics.rsiConditionFailed++;
+  }
+
+  if (
+    (bullish && !checks.bullishStructure) ||
+    (bearish && !checks.bearishStructure)
+  ) {
+    diagnostics.structureConditionFailed++;
+  }
+
+  if (
+    (bullish && !checks.higherTimeframeBullish) ||
+    (bearish && !checks.higherTimeframeBearish)
+  ) {
+    diagnostics.higherTimeframeConditionFailed++;
+  }
+
+  if (mode === "BEST_SETUP") {
+
+    if (!checks.volumeConfirmed) {
+      diagnostics.volumeConditionFailed++;
+    }
+
+    if (
+      (bullish && !checks.bullishBreakout) ||
+   (bearish && !checks.bearishBreakout)
+    ) {
+      diagnostics.breakoutConditionFailed++;
+    }
+  }
+}
+if (!signal) {
+  diagnostics.unavailableSignals++;
+} else {
+
+  if (signal.direction === "BUY") {
+    diagnostics.buySignals++;
+  } else if (signal.direction === "SELL") {
+    diagnostics.sellSignals++;
+  } else {
+    diagnostics.waitSignals++;
+  }
+
+  if (signal.setupType === "BREAKOUT") {
+    diagnostics.breakoutSignals++;
+  }
+
+  if (signal.setupType === "PULLBACK") {
+    diagnostics.pullbackSignals++;
+  }
+
+  if (signal.setupType === "TREND_ENTRY") {
+    diagnostics.trendEntrySignals++;
+  }
+}
     if (
       !signal ||
       signal.direction === "WAIT"
@@ -2452,7 +2604,11 @@ if (capital <= 0) {
       settings
     );
   }
-
+if (activeTrade) {
+  diagnostics.executedTrades++;
+} else {
+  diagnostics.rejectedEntries++;
+}
   // CLOSE REMAINING TRADE AT END OF TEST
 
   if (activeTrade) {
@@ -2484,6 +2640,7 @@ if (capital <= 0) {
     finalCapital: capital,
     startTime: candles[firstEligibleIndex].time,
     endTime: candles.at(-1).time,
+    diagnostics,
     trades,
     equityCurve
   };
@@ -2493,7 +2650,56 @@ if (capital <= 0) {
 function calculateBacktestPerformance(result) {
 
   const trades = result.trades;
+const strategyPerformance = {};
 
+for (const type of [
+  "BREAKOUT",
+  "PULLBACK",
+  "TREND_ENTRY",
+  "UNKNOWN"
+]) {
+
+  const group = trades.filter(
+    t => (t.setupType || "UNKNOWN") === type
+  );
+
+  const wins = group.filter(t => t.netPnL > 0);
+  const losses = group.filter(t => t.netPnL < 0);
+
+  const profit = wins.reduce(
+    (sum, t) => sum + t.netPnL, 0
+  );
+
+  const loss = Math.abs(
+    losses.reduce(
+      (sum, t) => sum + t.netPnL, 0
+    )
+  );
+
+  strategyPerformance[type] = {
+    totalTrades: group.length,
+    winningTrades: wins.length,
+    losingTrades: losses.length,
+
+    winRate: group.length > 0
+      ? wins.length / group.length * 100
+      : null,
+
+    netProfit: profit - loss,
+
+    profitFactor: loss > 0
+      ? profit / loss
+      : null,
+
+    expectancy: group.length > 0
+      ? (profit - loss) / group.length
+      : null,
+
+    totalFees: group.reduce(
+      (sum, t) => sum + t.totalFees, 0
+    )
+  };
+}
   const totalTrades = trades.length;
 
   const wins = trades.filter(
@@ -2573,6 +2779,8 @@ function calculateBacktestPerformance(result) {
 
   return {
     totalTrades,
+    strategyPerformance,
+diagnostics: result.diagnostics,
     winningTrades: wins.length,
     losingTrades: losses.length,
     breakevenTrades: breakeven.length,
@@ -2834,11 +3042,9 @@ app.get("/api/backtest", async (req, res) => {
       historicalCandles: candles.length,
 
       period: {
-        start: candles[
-          BACKTEST_SETTINGS.warmupCandles
-        ].time,
-        end: candles.at(-1).time
-      },
+  start: result.startTime,
+  end: result.endTime
+},
 
       settings: BACKTEST_SETTINGS,
 
