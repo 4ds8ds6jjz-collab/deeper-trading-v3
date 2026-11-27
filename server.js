@@ -480,6 +480,18 @@ app.get("/api/history/status", (req, res) => {
 // TRADE SETUP MEMORY
 
 const lockedSetups = new Map();
+// ADVANCE POTENTIAL SETUP MEMORY
+
+const lockedPotentialSetups = new Map();
+
+const POTENTIAL_SETUP_EXPIRY = {
+  "1m": 15 * 60,
+  "5m": 60 * 60,
+  "15m": 3 * 60 * 60,
+  "1h": 12 * 60 * 60,
+  "6h": 72 * 60 * 60,
+  "1d": 12 * 24 * 60 * 60
+};
 const lastUsedSignalCandles = new Map();
 function calculateEMA(values, period) {
   const k = 2 / (period + 1);
@@ -608,7 +620,122 @@ function calculateHigherTimeframeBias(
 }
 
 // REUSABLE STRATEGY ENGINE
+// POTENTIAL SETUP LIFECYCLE ENGINE
 
+function managePotentialSetup(
+  setupKey,
+  candidate,
+  price,
+  interval,
+  planningBias
+) {
+
+  const now = Math.floor(Date.now() / 1000);
+
+  if (!Number.isFinite(price) || price <= 0) {
+    return null;
+  }
+
+  let setup = lockedPotentialSetups.get(setupKey);
+
+  if (setup) {
+
+    const expired = now >= setup.expiresAt;
+
+    const invalidated =
+      setup.direction === "BUY"
+        ? price <= setup.stopLoss
+        : price >= setup.stopLoss;
+
+    const trendChanged =
+      (
+        setup.direction === "BUY" &&
+        planningBias === "BEARISH"
+      ) ||
+      (
+        setup.direction === "SELL" &&
+        planningBias === "BULLISH"
+      );
+
+    const opportunityMissed =
+      setup.direction === "BUY"
+        ? price >= setup.takeProfit1
+        : price <= setup.takeProfit1;
+
+    if (
+      expired ||
+      invalidated ||
+      trendChanged ||
+      opportunityMissed
+    ) {
+
+      lockedPotentialSetups.delete(setupKey);
+
+      return null;
+    }
+  }
+
+  if (!setup && candidate) {
+const candidateInvalid =
+  candidate.direction === "BUY"
+    ? price <= candidate.stopLoss ||
+      price >= candidate.takeProfit1
+    : price >= candidate.stopLoss ||
+      price <= candidate.takeProfit1;
+
+if (candidateInvalid) {
+  return null;
+}
+    const expiryDuration =
+      POTENTIAL_SETUP_EXPIRY[interval] || 3600;
+
+    setup = {
+
+      ...candidate,
+
+      createdAt: now,
+
+      expiresAt: now + expiryDuration
+
+    };
+
+    lockedPotentialSetups.set(setupKey, setup);
+  }
+
+  if (!setup) {
+    return null;
+  }
+
+  const distanceToZone = Math.max(
+    0,
+    setup.entryZoneLow - price,
+    price - setup.entryZoneHigh
+  );
+
+  const insideEntryZone =
+    price >= setup.entryZoneLow &&
+    price <= setup.entryZoneHigh;
+
+  return {
+
+    ...setup,
+
+    currentPrice: price,
+
+    distanceToZone,
+
+    distancePercent:
+      distanceToZone / price * 100,
+
+    remainingSeconds:
+      Math.max(0, setup.expiresAt - now),
+
+    status: insideEntryZone
+      ? "ENTRY_ZONE_REACHED"
+      : "WAITING_FOR_ENTRY_ZONE"
+
+  };
+}
 function evaluateStrategy(
   candles,
   interval,
@@ -929,6 +1056,213 @@ function evaluateStrategy(
     tp2 =
       entry - risk * adaptiveSettings.takeProfit2RR;
   }
+  // ADVANCE BEST SETUP PLANNING
+// PULLBACK CANDLE CONFIRMATION
+
+const latestCandle = candles.at(-1);
+const previousCandle = candles.at(-2);
+
+const candleBody = Math.abs(
+  latestCandle.close - latestCandle.open
+);
+
+const bullishPullbackConfirmed =
+  bullishTrendConfirmed &&
+  higherTimeframeBias === "BULLISH" &&
+  latestCandle.low <= ema20 + atr14 * 0.25 &&
+  latestCandle.close > ema20 &&
+  latestCandle.close > latestCandle.open &&
+  latestCandle.close > previousCandle.high &&
+  candleBody >= atr14 * 0.3 &&
+  rsi > adaptiveSettings.rsiBuy;
+
+const bearishPullbackConfirmed =
+  bearishTrendConfirmed &&
+  higherTimeframeBias === "BEARISH" &&
+  latestCandle.high >= ema20 - atr14 * 0.25 &&
+  latestCandle.close < ema20 &&
+  latestCandle.close < latestCandle.open &&
+  latestCandle.close < previousCandle.low &&
+  candleBody >= atr14 * 0.3 &&
+  rsi < adaptiveSettings.rsiSell;
+  // ACTIVATE CONFIRMED PULLBACK SIGNAL
+
+if (
+  mode === "BEST_SETUP" &&
+  direction === "WAIT" &&
+  !isSidewaysMarket
+) {
+
+  if (bullishPullbackConfirmed) {
+    direction = "BUY";
+  } else if (bearishPullbackConfirmed) {
+    direction = "SELL";
+  }
+
+}
+// PULLBACK RISK MANAGEMENT
+
+if (
+  direction !== "WAIT" &&
+  entry === null
+) {
+
+  entry = price;
+
+  const isBuy = direction === "BUY";
+
+  stopLoss = isBuy
+    ? Math.min(
+        entry - minimumRisk,
+        swingLow - swingBuffer
+      )
+    : Math.max(
+        entry + minimumRisk,
+        swingHigh + swingBuffer
+      );
+
+  risk = Math.abs(entry - stopLoss);
+
+  tp1 = isBuy
+    ? entry + risk * adaptiveSettings.takeProfit1RR
+    : entry - risk * adaptiveSettings.takeProfit1RR;
+
+  tp2 = isBuy
+    ? entry + risk * adaptiveSettings.takeProfit2RR
+    : entry - risk * adaptiveSettings.takeProfit2RR;
+
+  if (
+    ![entry, stopLoss, risk, tp1, tp2]
+      .every(Number.isFinite) ||
+    risk <= 0 ||
+    stopLoss <= 0 ||
+    tp1 <= 0 ||
+    tp2 <= 0
+  ) {
+
+    direction = "WAIT";
+    entry = null;
+    stopLoss = null;
+    risk = null;
+    tp1 = null;
+    tp2 = null;
+
+  }
+}
+
+let potentialSetup = null;
+
+const planningBias =
+  bullishTrendConfirmed &&
+  higherTimeframeBias === "BULLISH"
+    ? "BULLISH"
+    : bearishTrendConfirmed &&
+      higherTimeframeBias === "BEARISH"
+    ? "BEARISH"
+    : "NEUTRAL";
+
+if (
+  mode === "BEST_SETUP" &&
+  direction === "WAIT" &&
+  Number.isFinite(atr14) &&
+  atr14 > 0
+) {
+
+  const isBullish = planningBias === "BULLISH";
+  const isBearish = planningBias === "BEARISH";
+
+  if (isBullish || isBearish) {
+
+    const plannedEntry = ema20;
+
+    const zoneLow =
+      plannedEntry - atr14 * 0.25;
+
+    const zoneHigh =
+      plannedEntry + atr14 * 0.25;
+
+    const plannedSL = isBullish
+      ? Math.min(
+          swingLow - atr14 * 0.2,
+          zoneLow - minimumRisk
+        )
+      : Math.max(
+          swingHigh + atr14 * 0.2,
+          zoneHigh + minimumRisk
+        );
+
+    const plannedRisk =
+      Math.abs(plannedEntry - plannedSL);
+
+    const plannedTP1 = isBullish
+      ? plannedEntry + plannedRisk * 1.5
+      : plannedEntry - plannedRisk * 1.5;
+
+    const plannedTP2 = isBullish
+      ? plannedEntry + plannedRisk * 2
+      : plannedEntry - plannedRisk * 2;
+
+    const distanceToZone = Math.max(
+      0,
+      zoneLow - price,
+      price - zoneHigh
+    );
+
+    const validPlan =
+      zoneLow > 0 &&
+      plannedSL > 0 &&
+      plannedTP2 > 0 &&
+      plannedRisk > 0 &&
+      distanceToZone <= atr14 * 3 &&
+      (
+        isBullish
+          ? price > plannedSL
+          : price < plannedSL
+      );
+
+    if (validPlan) {
+
+      potentialSetup = {
+
+        direction: isBullish ? "BUY" : "SELL",
+
+        setupType: isBullish
+          ? "BULLISH_PULLBACK"
+          : "BEARISH_PULLBACK",
+
+        status: "AWAITING_CONFIRMATION",
+
+        entry: plannedEntry,
+
+        entryZoneLow: zoneLow,
+        entryZoneHigh: zoneHigh,
+
+        stopLoss: plannedSL,
+
+        takeProfit1: plannedTP1,
+        takeProfit2: plannedTP2,
+
+        riskReward: 2,
+
+        distanceToZone,
+
+        distancePercent:
+          distanceToZone / price * 100,
+
+        condition: isBullish
+          ? "Wait for entry zone retest and bullish candle confirmation."
+          : "Wait for entry zone retest and bearish candle confirmation.",
+
+        invalidation: isBullish
+          ? "Cancel if price breaks below stop loss."
+          : "Cancel if price breaks above stop loss.",
+
+        detectedAt: candles.at(-1).time
+
+      };
+    }
+  }
+}
   return {
     price,
     ema9,
@@ -948,15 +1282,18 @@ function evaluateStrategy(
     isSidewaysMarket,
     bullishTrendConfirmed,
         bearishTrendConfirmed,
-    entry,
-    stopLoss,
-    tp1,
-    tp2,
-    risk
+planningBias,
+potentialSetup,
+entry,
+stopLoss,
+tp1,
+tp2,
+risk
   };
 }
+
 app.get("/api/analysis", async (req, res) => {
-  try {
+  
     const symbol = req.query.symbol || "BTCUSDT";
     const interval = req.query.interval || "15m";
     const mode = String(req.query.mode || "BEST_SETUP").toUpperCase();
@@ -1456,7 +1793,9 @@ lastUsedSignalCandles.set(
   lastClosedCandle.time
 );
   setupStatus = "NEW_SETUP";
+// CLEAR OLD POTENTIAL SETUP
 
+lockedPotentialSetups.delete(setupKey);
 } else {
   direction = "WAIT";
   entry = null;
@@ -1482,6 +1821,23 @@ if (setupStatus === "LOCKED") {
       higherTimeframeBias,
       higherInterval,
       isSidewaysMarket: sharedStrategy?.isSidewaysMarket ?? isSidewaysMarket,
+      // ADVANCE TRADE PLANNING OUTPUT
+
+planningBias:
+  sharedStrategy?.planningBias ?? "NEUTRAL",
+
+potentialSetup:
+  mode === "BEST_SETUP" &&
+  direction === "WAIT" &&
+  livePrice !== null
+    ? managePotentialSetup(
+        setupKey,
+        sharedStrategy?.potentialSetup ?? null,
+        Number(livePrice),
+        interval,
+        sharedStrategy?.planningBias ?? "NEUTRAL"
+      )
+    : null,
       longPlan: {
   entry: longEntry,
   stopLoss: longSL,
