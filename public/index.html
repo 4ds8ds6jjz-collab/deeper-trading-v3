@@ -1009,7 +1009,7 @@ async function loadAnalysis(mode = analysisMode) {
 
       try {
         const response = await fetch(
-          "/api/analysis?symbol=" + encodeURIComponent(symbol) +
+       "/api/analysis?legacy=1&symbol=" + encodeURIComponent(symbol) +
           "&interval=" + encodeURIComponent(interval) +
 "&mode=" + encodeURIComponent(analysisMode)
         );
