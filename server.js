@@ -2078,7 +2078,14 @@ async function runBacktest(job) {
 
     let capital = CONFIG.initialCapital;
     let activeTrade = null;
-
+const diagnostics = {
+  evaluatedCandles: 0,
+  buySignals: 0,
+  sellSignals: 0,
+  waitSignals: 0,
+  executedTrades: 0,
+  rejectedEntries: 0
+};
     const trades = [];
 
     const equityCurve = [{
@@ -2191,15 +2198,32 @@ async function runBacktest(job) {
         );
       }
 
-      if (!signal || signal.direction === "WAIT") {
-        continue;
-      }
+      diagnostics.evaluatedCandles++;
 
-      activeTrade = openBacktestTrade(
-        signal,
-        candles[i + 1],
-        capital
-      );
+if (!signal || signal.direction === "WAIT") {
+  diagnostics.waitSignals++;
+  continue;
+}
+
+if (signal.direction === "BUY" || signal.direction === "LONG") {
+  diagnostics.buySignals++;
+}
+
+if (signal.direction === "SELL" || signal.direction === "SHORT") {
+  diagnostics.sellSignals++;
+}
+
+activeTrade = openBacktestTrade(
+  signal,
+  candles[i + 1],
+  capital
+);
+
+if (activeTrade) {
+  diagnostics.executedTrades++;
+} else {
+  diagnostics.rejectedEntries++;
+}
     }
 
     if (activeTrade) {
@@ -2232,11 +2256,14 @@ async function runBacktest(job) {
       },
       settings: CONFIG,
       historicalCandles: candles.length,
-      performance: calculatePerformance(
-        trades,
-        equityCurve,
-        capital
-      ),
+      performance: {
+  ...calculatePerformance(
+    trades,
+    equityCurve,
+    capital
+  ),
+  diagnostics: diagnostics
+},
       recentTrades: trades.slice(-100),
       equityCurve,
       note:
