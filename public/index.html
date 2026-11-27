@@ -400,7 +400,9 @@
   <div class="setup-price" id="setupEntry">—</div>
 
   <p id="setupCondition" class="muted"></p>
-
+<p id="setupExpiry"
+   style="display:none;color:#38bdf8;font-size:13px;font-weight:600;">
+</p>
   <details>
     <summary>More Info</summary>
     <div id="setupDetails"></div>
@@ -568,6 +570,46 @@ let activeTradeZone = null;
 let tradeZoneAnchorTime = null;
 let analysisMode = "BEST_SETUP";
 let analysisRequestId = 0;
+let activeSetupExpiry = null;
+
+function updateSetupExpiry() {
+
+  const el = document.getElementById("setupExpiry");
+
+  if (!activeSetupExpiry) {
+    el.style.display = "none";
+    return;
+  }
+
+  el.style.display = "block";
+
+  const remaining = Math.max(
+    0,
+    Math.floor(activeSetupExpiry - Date.now() / 1000)
+  );
+
+  if (remaining === 0) {
+    el.textContent = "⚠️ Setup expired — do not enter";
+    el.style.color = "#fb7185";
+    return;
+  }
+
+  const hours = Math.floor(remaining / 3600);
+  const minutes = Math.floor((remaining % 3600) / 60);
+  const seconds = remaining % 60;
+
+  const pad = n => String(n).padStart(2, "0");
+
+  el.style.color = "#38bdf8";
+
+  el.textContent =
+    "⏳ Setup expires in: " +
+    pad(hours) + ":" +
+    pad(minutes) + ":" +
+    pad(seconds);
+}
+
+setInterval(updateSetupExpiry, 1000);
 let chartRequestId = 0;
 const bestSetupBtn = document.getElementById("bestSetupBtn");
 const tradeNowBtn = document.getElementById("tradeNowBtn");
@@ -667,41 +709,37 @@ width: zoneWidth + "px",
   makeZone(entryY, slY, "rgba(239,68,68,0.22)");
   makeZone(entryY, tpY, "rgba(34,197,94,0.22)");
 }
-// UNIFIED PENDING SETUP FILTER
+// ADVANCED PENDING SETUP FILTER
 
 function getPendingPlan(data) {
+
+  if (analysisMode !== "BEST_SETUP") {
+    return null;
+  }
 
   if (data.direction !== "WAIT") {
     return null;
   }
 
-  if (data.isSidewaysMarket !== false) {
+  if (data.livePriceAvailable !== true) {
     return null;
   }
 
-  if (data.setupStatus !== "NO_SETUP") {
+  const plan = data.potentialSetup;
+
+  if (!plan) {
     return null;
   }
 
-  if (
-    data.marketStructure === "BULLISH" &&
-    data.higherTimeframeBias === "BULLISH" &&
-    Number(data.ema9) > Number(data.ema20) &&
-    Number(data.rsi) > 53
-  ) {
-    return data.longPlan || null;
+  if (!["BUY", "SELL"].includes(plan.direction)) {
+    return null;
   }
 
-  if (
-    data.marketStructure === "BEARISH" &&
-    data.higherTimeframeBias === "BEARISH" &&
-    Number(data.ema9) < Number(data.ema20) &&
-    Number(data.rsi) < 47
-  ) {
-    return data.shortPlan || null;
+  if (Number(plan.expiresAt) <= Date.now() / 1000) {
+    return null;
   }
 
-  return null;
+  return plan;
 }
 function updateTradeLines(data) {
   if (!candleSeries) return;
@@ -728,7 +766,21 @@ if (plan.entry != null &&
 }
 
 const levels = [
-  { price: plan.entry, title: pendingPlan ? "PENDING ENTRY" : "ENTRY", color: "#38bdf8" },
+{
+  price: plan.entry,
+  title: pendingPlan ? "PLANNED ENTRY" : "ENTRY",
+  color: "#38bdf8"
+},
+{
+  price: pendingPlan?.entryZoneHigh,
+  title: "ZONE HIGH",
+  color: "#facc15"
+},
+{
+  price: pendingPlan?.entryZoneLow,
+  title: "ZONE LOW",
+  color: "#facc15"
+},
   { price: plan.stopLoss, title: "STOP LOSS", color: "#ef4444" },
   { price: plan.takeProfit1, title: "TP1", color: "#22c55e" },
   { price: plan.takeProfit2, title: "TP2", color: "#16a34a" }
@@ -1005,25 +1057,38 @@ if (selectedPlan) {
   plansBox.style.display = "block";
 
   
-const isBuy =
-  data.direction === "BUY" ||
-  (
-    data.direction === "WAIT" &&
-    selectedPlan === data.longPlan
-  );
+const isBuy = selectedPlan.direction === "BUY";
 const isPending = data.direction === "WAIT";
+activeSetupExpiry = isPending
+  ? Number(selectedPlan.expiresAt) || null
+  : null;
 
+updateSetupExpiry();
 setupTitle.textContent = isPending
   ? "⏳ " + (isBuy ? "POTENTIAL BUY SETUP" : "POTENTIAL SELL SETUP")
   : isBuy ? "🟢 BUY SETUP" : "🔴 SELL SETUP";
 
 setupSummary.textContent = isPending
-  ? "Confirmation pending — do not enter yet."
+  ? (
+      selectedPlan.status === "ENTRY_ZONE_REACHED"
+        ? "🎯 Entry zone reached · Wait for candle confirmation."
+        : "⏳ Distance to entry zone: " +
+          format(selectedPlan.distanceToZone) +
+          " (" +
+          Number(selectedPlan.distancePercent).toFixed(2) +
+          "%)"
+    ) + " · Do not enter yet."
   : (data.reason || "Trade setup identified.");
-
 setupEntry.textContent =
-  (isBuy ? "Buy near " : "Sell near ") + format(selectedPlan.entry);
-
+  isPending &&
+  selectedPlan.entryZoneLow != null &&
+  selectedPlan.entryZoneHigh != null
+    ? (isBuy ? "Buy Zone: " : "Sell Zone: ") +
+      format(selectedPlan.entryZoneLow) +
+      " – " +
+      format(selectedPlan.entryZoneHigh)
+    : (isBuy ? "Buy near " : "Sell near ") +
+      format(selectedPlan.entry);
 setupEntry.style.color = isPending
   ? "#facc15"
   : isBuy ? "#4ade80" : "#fb7185";
@@ -1056,12 +1121,24 @@ setupDetails.innerHTML = `
 
 } else {
   plansBox.style.display = "none";
+  activeSetupExpiry = null;
+updateSetupExpiry();
 }
 
         const direction = data.direction || "WAIT";
         
 const displayPlan = selectedPlan || data;
+const marketBias =
+  data.planningBias ||
+  data.higherTimeframeBias ||
+  "NEUTRAL";
 
+const biasText =
+  marketBias === "BULLISH"
+    ? "🟢 Market Bias: BULLISH"
+    : marketBias === "BEARISH"
+      ? "🔴 Market Bias: BEARISH"
+      : "⚪ Market Bias: NEUTRAL";
         directionEl.textContent =
           direction + " · " + (data.status || "Analysis");
 
@@ -1106,7 +1183,17 @@ document.getElementById("riskReward").textContent =
     : "—";
 
         
-document.getElementById("tradeReason").textContent = "";
+document.getElementById("tradeReason").textContent =
+  biasText + " | " +
+  (
+    selectedPlan && data.direction === "WAIT"
+      ? "Potential opportunity — confirmation pending."
+      : data.direction !== "WAIT"
+        ? "Technical trade candidate."
+        : data.isSidewaysMarket
+          ? "Sideways market — no valid setup."
+          : "No confirmed entry signal."
+  );
 
         document.getElementById("tradeNote").textContent =
           data.note || "Indicative setup only. Not a confirmed trade.";
@@ -1184,17 +1271,20 @@ if (breakoutEl) {
 
     breakoutEl.style.color = "#fb7185";
 
-  } else if (data.isSidewaysMarket) {
+} else if (pending) {
 
     breakoutEl.textContent =
-      "⏳ SIDEWAYS MARKET · NO TRADE";
+      pending.status === "ENTRY_ZONE_REACHED"
+        ? "🎯 ENTRY ZONE REACHED · WAIT FOR CONFIRMATION"
+        : "⏳ " + pending.direction +
+          " OPPORTUNITY · WAIT FOR ENTRY ZONE";
 
     breakoutEl.style.color = "#facc15";
 
-  } else if (pending) {
+  } else if (data.isSidewaysMarket) {
 
     breakoutEl.textContent =
-      "⏳ " + pending.condition;
+      "⏳ SIDEWAYS MARKET · NO VALID SETUP";
 
     breakoutEl.style.color = "#facc15";
 
@@ -1216,6 +1306,30 @@ updateTradeLines(data);
   }
 
   directionEl.textContent = "Analysis unavailable";
+  document.getElementById("bestSetupPlans")
+  .style.display = "none";
+
+activeSetupExpiry = null;
+updateSetupExpiry();
+
+document.getElementById("breakoutStatus")
+  .textContent = "⚠️ Live analysis unavailable";
+
+document.getElementById("signalQuality")
+  .textContent = "Signal Quality: Unavailable";
+
+document.getElementById("confidenceValue")
+  .textContent = "—";
+
+document.getElementById("confidenceBar")
+  .style.width = "0%";
+
+document.getElementById("confidenceLabel")
+  .textContent = "DATA UNAVAILABLE";
+
+updateTradeLines({
+  direction: "WAIT"
+});
         document.getElementById("tradeReason").textContent =
           error.message;
       }
