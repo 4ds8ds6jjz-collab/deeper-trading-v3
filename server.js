@@ -2656,7 +2656,308 @@ const server = http.createServer(
     }
   }
 );
+// ========================================
+// DTI V6 COMPATIBILITY ENGINE
+// ========================================
 
+const originalRequestHandler =
+  server.listeners("request")[0];
+
+server.removeAllListeners("request");
+
+async function getLiveChartCandles(symbol, interval) {
+  validateSelection(symbol, interval);
+
+  const duration = TIMEFRAMES[interval];
+
+  const candles = await getCandles(
+    symbol,
+    interval,
+    250
+  );
+
+  const base = [
+    60, 300, 900, 3600, 21600, 86400
+  ].filter(value =>
+    value <= duration &&
+    duration % value === 0
+  ).at(-1);
+
+  const timestamp = now();
+
+  const bucket =
+    Math.floor(timestamp / duration) * duration;
+
+  try {
+    const query = new URLSearchParams({
+      granularity: String(base),
+      start: new Date(bucket * 1000).toISOString(),
+      end: new Date(timestamp * 1000).toISOString()
+    });
+
+    const rows = await fetchJSON(
+      "https://api.exchange.coinbase.com/products/" +
+      SYMBOLS[symbol] +
+      "/candles?" +
+      query.toString()
+    );
+
+    const current = rows.map(row => ({
+      time: Number(row[0]),
+      low: Number(row[1]),
+      high: Number(row[2]),
+      open: Number(row[3]),
+      close: Number(row[4]),
+      volume: Number(row[5])
+    })).filter(c =>
+      Object.values(c).every(Number.isFinite) &&
+      c.time >= bucket &&
+      c.time < bucket + duration
+    ).sort((a, b) => a.time - b.time);
+
+    if (!current.length) {
+      return candles;
+    }
+
+    const price = await getTicker(symbol);
+
+    const live = {
+      time: bucket,
+      open: current[0].open,
+      high: Math.max(
+        price,
+        ...current.map(c => c.high)
+      ),
+      low: Math.min(
+        price,
+        ...current.map(c => c.low)
+      ),
+      close: price,
+      volume: current.reduce(
+        (sum, c) => sum + c.volume,
+        0
+      )
+    };
+
+    return [
+      ...candles.filter(c => c.time < bucket),
+      live
+    ];
+
+  } catch (error) {
+    console.error(error.message);
+    return candles;
+  }
+}
+
+function legacyDirection(direction) {
+  if (direction === "LONG") return "BUY";
+  if (direction === "SHORT") return "SELL";
+  return "WAIT";
+}
+
+function legacyPlan(plan, interval) {
+  if (!plan) return null;
+
+  return {
+    ...plan,
+    direction: legacyDirection(plan.direction),
+    expiresAt:
+      (now() + TIMEFRAMES[interval] * 12) * 1000,
+    distanceToZone: null
+  };
+}
+
+function compatibleAnalysis(result) {
+  const technical = result.lanes.technical;
+
+  const scenarios = result.scenarios || [];
+
+  const longPlan = scenarios.find(
+    p => p.direction === "LONG" &&
+    p.type === "BREAKOUT"
+  );
+
+  const shortPlan = scenarios.find(
+    p => p.direction === "SHORT" &&
+    p.type === "BREAKOUT"
+  );
+
+  const preferredDirection =
+    technical.bias === "BULLISH"
+      ? "LONG"
+      : technical.bias === "BEARISH"
+        ? "SHORT"
+        : null;
+
+  const potential = scenarios.find(
+    p => p.direction === preferredDirection &&
+    p.type === "PULLBACK"
+  ) || scenarios.find(
+    p => p.direction === preferredDirection
+  );
+
+  const direction = legacyDirection(
+    result.direction
+  );
+
+  return {
+    ...result,
+
+    originalDirection: result.direction,
+
+    direction,
+
+    status: direction === "WAIT"
+      ? "NO TRADE"
+      : "CANDIDATE SETUP",
+
+    setupStatus: direction === "WAIT"
+      ? "AWAITING_CONFIRMATION"
+      : "ACTIVE",
+
+    analysisPrice: technical.price,
+
+    livePriceAvailable: true,
+
+    ema9: technical.ema9,
+    ema20: technical.ema20,
+    ema50: technical.ema50,
+    ema200: technical.ema200,
+
+    rsi: technical.rsi,
+    atr: technical.atr,
+
+    volumeRatio: technical.volumeRatio,
+
+    volumeStrength:
+      technical.volumeRatio >= 1.2
+        ? "HIGH"
+        : "NORMAL",
+
+    marketStructure: technical.structure,
+
+    planningBias: technical.bias,
+
+    higherTimeframeBias:
+      technical.higherTimeframeBias,
+
+    isSidewaysMarket:
+      technical.structure === "RANGING",
+
+    signalConfidence: result.score,
+
+    confidenceLevel: result.score >= 85
+      ? "HIGH"
+      : result.score >= 70
+        ? "MEDIUM"
+        : "LOW",
+
+    historicalAccuracy: null,
+
+    riskReward: result.riskReward
+      ? `1:${result.riskReward}`
+      : null,
+
+    breakoutLevel: technical.resistance,
+    breakdownLevel: technical.support,
+
+    buyTrigger: longPlan?.trigger || null,
+    sellTrigger: shortPlan?.trigger || null,
+
+    breakoutStatus: technical.bullishBOS
+      ? "BULLISH BREAKOUT"
+      : technical.bearishBOS
+        ? "BEARISH BREAKDOWN"
+        : "AWAITING CONFIRMATION",
+
+    longPlan: legacyPlan(
+      longPlan,
+      result.interval
+    ),
+
+    shortPlan: legacyPlan(
+      shortPlan,
+      result.interval
+    ),
+
+    potentialSetup: direction === "WAIT"
+      ? legacyPlan(potential, result.interval)
+      : null,
+
+    note:
+      "Technical confidence is not a verified " +
+      "winning probability."
+  };
+}
+
+server.on("request", async (req, res) => {
+  try {
+    const url = new URL(
+      req.url,
+      "http://localhost"
+    );
+
+    const symbol = String(
+      url.searchParams.get("symbol") || "BTCUSDT"
+    ).toUpperCase();
+
+    const interval =
+      url.searchParams.get("interval") || "15m";
+
+    const mode =
+      url.searchParams.get("mode") || "BEST_SETUP";
+
+    if (url.pathname === "/api/candles") {
+      const candles = await getLiveChartCandles(
+        symbol,
+        interval
+      );
+
+      return json(res, {
+        symbol,
+        interval,
+        candles
+      });
+    }
+
+    if (
+      url.pathname === "/api/analysis" &&
+      url.searchParams.get("legacy") === "1"
+    ) {
+      const result = await analyzeMarket(
+        symbol,
+        interval,
+        mode
+      );
+
+      return json(
+        res,
+        compatibleAnalysis(result)
+      );
+    }
+
+    if (url.pathname === "/api/health") {
+      return json(res, {
+        status: "ok",
+        app: "Deeper Trading Intelligence V6",
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    return originalRequestHandler.call(
+      server,
+      req,
+      res
+    );
+
+  } catch (error) {
+    return json(res, {
+      status: "error",
+      error: error.message
+    }, 400);
+  }
+});
 // ========================================
 // START SERVER
 // ========================================
