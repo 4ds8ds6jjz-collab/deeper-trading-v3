@@ -2138,13 +2138,42 @@ function runBacktest(
     adaptiveSettings.higherInterval;
 
   const candleDuration = TIMEFRAMES[interval];
+  // SELECT CONTINUOUS HISTORICAL DATA
+
+function getContinuousCandles(data, duration) {
+  let startIndex = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const gap = data[i].time - data[i - 1].time;
+
+    if (gap !== duration) {
+      startIndex = i;
+    }
+  }
+
+  return data.slice(startIndex);
+}
+
+candles = getContinuousCandles(
+  candles,
+  candleDuration
+);
+
+higherCandles = getContinuousCandles(
+  higherCandles,
+  TIMEFRAMES[higherInterval]
+);
   // HISTORICAL DATA VALIDATION
 
   if (!Number.isFinite(candleDuration) ||
       candleDuration <= 0) {
     throw new Error("Invalid candle duration");
   }
-
+if (candles.length < settings.warmupCandles + 2) {
+  throw new Error(
+    "Insufficient continuous historical data"
+  );
+}
   let missingCandles = 0;
 
   for (let i = 1; i < candles.length; i++) {
