@@ -7,7 +7,7 @@ const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 
 const PORT = process.env.PORT || 3000;
-
+// Safe checkpoint before multi-strategy update
 const SYMBOLS = {
   BTCUSDT: "BTC-USD",
   ETHUSDT: "ETH-USD",
