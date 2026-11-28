@@ -1215,6 +1215,218 @@ function buildScenarios(technical, price) {
 // COMBINED DECISION ENGINE
 // ========================================
 
+function buildIndependentStrategies(candles, technical) {
+  if (!Array.isArray(candles) || candles.length < 50) {
+    return [];
+  }
+
+  const last = candles[candles.length - 1];
+  const previous = candles[candles.length - 2];
+
+  const price = last.close;
+  const atrValue = technical.atr;
+  const rsiValue = technical.rsi;
+  const ema20 = technical.ema20;
+  const ema50 = technical.ema50;
+
+  if (
+    !Number.isFinite(price) ||
+    !Number.isFinite(atrValue) ||
+    atrValue <= 0
+  ) {
+    return [];
+  }
+
+  const signals = [];
+
+  function addSignal(strategy, direction, reason, score) {
+    signals.push({
+      strategy,
+      direction,
+      reason,
+      score,
+      entry: price,
+      timeframeStatus: "SETUP_DETECTED",
+      confirmationRequired: true
+    });
+  }
+
+  // 1. EMA TREND
+  if (
+    Number.isFinite(ema20) &&
+    Number.isFinite(ema50)
+  ) {
+    if (price > ema20 && ema20 > ema50) {
+      addSignal(
+        "EMA_TREND",
+        "LONG",
+        "Price and EMA alignment bullish",
+        70
+      );
+    }
+
+    if (price < ema20 && ema20 < ema50) {
+      addSignal(
+        "EMA_TREND",
+        "SHORT",
+        "Price and EMA alignment bearish",
+        70
+      );
+    }
+  }
+
+  // 2. RSI REVERSAL
+  if (Number.isFinite(rsiValue)) {
+    if (rsiValue <= 30) {
+      addSignal(
+        "RSI_REVERSAL",
+        "LONG",
+        "RSI oversold condition",
+        65
+      );
+    }
+
+    if (rsiValue >= 70) {
+      addSignal(
+        "RSI_REVERSAL",
+        "SHORT",
+        "RSI overbought condition",
+        65
+      );
+    }
+  }
+
+  // 3. MOMENTUM
+  if (Number.isFinite(previous.close)) {
+    if (
+      price > previous.close &&
+      last.close > last.open
+    ) {
+      addSignal(
+        "MOMENTUM",
+        "LONG",
+        "Bullish candle momentum",
+        60
+      );
+    }
+
+    if (
+      price < previous.close &&
+      last.close < last.open
+    ) {
+      addSignal(
+        "MOMENTUM",
+        "SHORT",
+        "Bearish candle momentum",
+        60
+      );
+    }
+  }
+
+  // 4. SUPPORT / RESISTANCE BREAKOUT
+  const resistance = technical.resistance;
+  const support = technical.support;
+
+  if (
+    Number.isFinite(resistance) &&
+    previous.close <= resistance &&
+    price > resistance
+  ) {
+    addSignal(
+      "RESISTANCE_BREAKOUT",
+      "LONG",
+      "Price crossed above resistance",
+      75
+    );
+  }
+
+  if (
+    Number.isFinite(support) &&
+    previous.close >= support &&
+    price < support
+  ) {
+    addSignal(
+      "SUPPORT_BREAKDOWN",
+      "SHORT",
+      "Price crossed below support",
+      75
+    );
+  }
+
+  return signals;
+}
+
+async function buildMultiTimeframeAnalysis(symbol) {
+  const timeframes = ["1d", "4h", "1h", "15m", "5m"];
+
+  const higherTimeframes = {
+    "1d": "1d",
+    "4h": "1d",
+    "1h": "4h",
+    "15m": "1h",
+    "5m": "1h"
+  };
+
+  const results = await Promise.all(
+    timeframes.map(async interval => {
+      try {
+        const candles = await getCandles(
+          symbol,
+          interval,
+          250
+        );
+
+        return [interval, candles];
+      } catch (error) {
+        return [interval, null];
+      }
+    })
+  );
+
+  const candleMap = Object.fromEntries(results);
+  const analysis = {};
+
+  for (const interval of timeframes) {
+    const candles = candleMap[interval];
+
+    if (!candles || candles.length < 50) {
+      analysis[interval] = {
+        status: "DATA_UNAVAILABLE",
+        strategies: []
+      };
+      continue;
+    }
+
+    try {
+      const higherInterval = higherTimeframes[interval];
+      const higherCandles =
+        candleMap[higherInterval] || candles;
+
+      const technical = technicalAnalysis(
+        candles,
+        higherBias(higherCandles)
+      );
+
+      analysis[interval] = {
+        status: "AVAILABLE",
+        marketBias: technical.bias,
+        marketStructure: technical.structure,
+        strategies: buildIndependentStrategies(
+          candles,
+          technical
+        )
+      };
+    } catch (error) {
+      analysis[interval] = {
+        status: "ANALYSIS_ERROR",
+        strategies: []
+      };
+    }
+  }
+
+  return analysis;
+}
+
 function decide(
   technical,
   flow,
@@ -1506,7 +1718,10 @@ async function analyzeMarket(
     candles,
     higherBias(higherCandles)
   );
-
+const independentStrategies =
+  buildIndependentStrategies(candles, technical);
+  const multiTimeframeAnalysis =
+  await buildMultiTimeframeAnalysis(symbol);
   for (const signal of signals.values()) {
     if (
       signal.symbol === symbol &&
@@ -1579,13 +1794,15 @@ async function analyzeMarket(
     }
   }
 
-  return {
+ return {
     symbol,
     interval,
     mode,
     higherInterval,
     price,
     ...decision,
+    independentStrategies,
+    multiTimeframeAnalysis,
     signalConfidence: decision.score,
     signalQuality: decision.direction === "WAIT"
       ? "WAIT"
