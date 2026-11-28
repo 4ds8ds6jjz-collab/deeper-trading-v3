@@ -1427,6 +1427,66 @@ async function buildMultiTimeframeAnalysis(symbol) {
   return analysis;
 }
 
+function buildConfluenceSummary(multiTimeframeAnalysis) {
+  const sides = {
+    LONG: [],
+    SHORT: []
+  };
+
+  for (const [timeframe, data] of Object.entries(
+    multiTimeframeAnalysis || {}
+  )) {
+    for (const signal of data.strategies || []) {
+      if (
+        signal.direction === "LONG" ||
+        signal.direction === "SHORT"
+      ) {
+        sides[signal.direction].push({
+          timeframe,
+          strategy: signal.strategy,
+          score: signal.score,
+          reason: signal.reason
+        });
+      }
+    }
+  }
+
+  function summarize(signals) {
+    const strategies = [
+      ...new Set(signals.map(s => s.strategy))
+    ];
+
+    const timeframes = [
+      ...new Set(signals.map(s => s.timeframe))
+    ];
+
+    return {
+      signalCount: signals.length,
+      strategyCount: strategies.length,
+      timeframeCount: timeframes.length,
+      strategies,
+      timeframes,
+      signals
+    };
+  }
+
+  const long = summarize(sides.LONG);
+  const short = summarize(sides.SHORT);
+
+  return {
+    long,
+    short,
+    conflict: long.signalCount > 0 && short.signalCount > 0,
+    dominant: long.signalCount > short.signalCount
+      ? "LONG"
+      : short.signalCount > long.signalCount
+        ? "SHORT"
+        : long.signalCount > 0
+          ? "BALANCED"
+          : "NONE"
+  };
+}
+
 function decide(
   technical,
   flow,
@@ -1722,6 +1782,8 @@ const independentStrategies =
   buildIndependentStrategies(candles, technical);
   const multiTimeframeAnalysis =
   await buildMultiTimeframeAnalysis(symbol);
+  const confluence =
+  buildConfluenceSummary(multiTimeframeAnalysis);
   for (const signal of signals.values()) {
     if (
       signal.symbol === symbol &&
@@ -1803,6 +1865,7 @@ const independentStrategies =
     ...decision,
     independentStrategies,
     multiTimeframeAnalysis,
+    confluence,
     signalConfidence: decision.score,
     signalQuality: decision.direction === "WAIT"
       ? "WAIT"
