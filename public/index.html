@@ -408,6 +408,55 @@
 </div>
 
 </div>
+
+<!-- MULTI-TIMEFRAME CONFLUENCE DASHBOARD -->
+<div id="confluenceDashboard"
+     style="background:#101c2d;border:1px solid #26364c;border-radius:12px;padding:14px;margin:16px 0;">
+
+  <h3 style="margin:0 0 14px;">🧠 Multi-Timeframe Confluence</h3>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+
+    <div style="background:#172235;border-radius:9px;padding:12px;">
+      <div style="color:#4ade80;font-size:12px;">LONG SIGNALS</div>
+      <strong id="confluenceLongCount" style="font-size:25px;">—</strong>
+      <div id="confluenceLongDetails" style="font-size:11px;color:#94a3b8;margin-top:6px;">Waiting for data</div>
+    </div>
+
+    <div style="background:#172235;border-radius:9px;padding:12px;">
+      <div style="color:#fb7185;font-size:12px;">SHORT SIGNALS</div>
+      <strong id="confluenceShortCount" style="font-size:25px;">—</strong>
+      <div id="confluenceShortDetails" style="font-size:11px;color:#94a3b8;margin-top:6px;">Waiting for data</div>
+    </div>
+
+  </div>
+
+  <div style="margin-top:12px;background:#172235;border-radius:9px;padding:12px;">
+    <div style="display:flex;justify-content:space-between;gap:8px;">
+      <span style="color:#cbd5e1;">Dominant Direction</span>
+      <strong id="confluenceDominant">—</strong>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;gap:8px;margin-top:10px;">
+      <span style="color:#cbd5e1;">Signal Conflict</span>
+      <strong id="confluenceConflict">—</strong>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;gap:8px;margin-top:10px;">
+      <span style="color:#cbd5e1;">5M Confirmation</span>
+      <strong id="confluence5m">—</strong>
+    </div>
+  </div>
+
+  <div style="margin-top:12px;">
+    <strong style="font-size:13px;">Timeframe Breakdown</strong>
+    <div id="confluenceTimeframes" style="margin-top:8px;color:#cbd5e1;font-size:12px;">
+      Waiting for analysis...
+    </div>
+  </div>
+
+</div>
+
   <p id="tradeNote" class="muted"></p>
 
   <button onclick="loadAnalysis()">Refresh Analysis</button>
@@ -1021,6 +1070,125 @@ if (requestId !== analysisRequestId) {
         if (!response.ok) {
           throw new Error(data.error || "Analysis unavailable");
         }
+
+// ========================================
+// MULTI-TIMEFRAME CONFLUENCE RENDERER
+// ========================================
+
+const confluence = data.confluence;
+
+const longCount = document.getElementById("confluenceLongCount");
+const shortCount = document.getElementById("confluenceShortCount");
+const longDetails = document.getElementById("confluenceLongDetails");
+const shortDetails = document.getElementById("confluenceShortDetails");
+const dominant = document.getElementById("confluenceDominant");
+const conflict = document.getElementById("confluenceConflict");
+const fiveMinute = document.getElementById("confluence5m");
+const timeframeBox = document.getElementById("confluenceTimeframes");
+
+if (confluence) {
+  const long = confluence.long || {};
+  const short = confluence.short || {};
+
+  longCount.textContent = long.signalCount ?? 0;
+  shortCount.textContent = short.signalCount ?? 0;
+
+  longDetails.textContent =
+    `${long.strategyCount ?? 0} strategies · ${long.timeframeCount ?? 0} timeframes`;
+
+  shortDetails.textContent =
+    `${short.strategyCount ?? 0} strategies · ${short.timeframeCount ?? 0} timeframes`;
+
+  dominant.textContent = confluence.dominant || "NONE";
+  dominant.style.color =
+    confluence.dominant === "LONG" ? "#4ade80" :
+    confluence.dominant === "SHORT" ? "#fb7185" :
+    "#facc15";
+
+  conflict.textContent = confluence.conflict
+    ? "YES · Opposing signals"
+    : "NO";
+
+  conflict.style.color = confluence.conflict
+    ? "#facc15"
+    : "#4ade80";
+
+  const fiveData = data.multiTimeframeAnalysis?.["5m"];
+  const fiveStrategies = fiveData?.strategies || [];
+
+  if (fiveData?.status !== "AVAILABLE") {
+    fiveMinute.textContent = "DATA UNAVAILABLE";
+    fiveMinute.style.color = "#94a3b8";
+  } else if (fiveStrategies.length === 0) {
+    fiveMinute.textContent = "No setup detected";
+    fiveMinute.style.color = "#94a3b8";
+  } else {
+    const pending = fiveStrategies.some(
+      s => s.confirmationRequired === true
+    );
+
+    fiveMinute.textContent = pending
+      ? "Setup detected · Confirmation pending"
+      : "Strategy signal detected · Trigger not verified";
+
+    fiveMinute.style.color = "#facc15";
+  }
+
+  const timeframeOrder = ["1d", "4h", "1h", "15m", "5m"];
+
+  timeframeBox.replaceChildren();
+
+  for (const timeframe of timeframeOrder) {
+    const item = data.multiTimeframeAnalysis?.[timeframe];
+
+    const row = document.createElement("div");
+    row.style.cssText =
+      "padding:9px 0;border-bottom:1px solid #26364c;";
+
+    const heading = document.createElement("div");
+    heading.style.cssText =
+      "display:flex;justify-content:space-between;gap:8px;font-weight:700;";
+
+    const name = document.createElement("span");
+    name.textContent = timeframe.toUpperCase();
+
+    const bias = document.createElement("span");
+    bias.textContent = item?.marketBias || item?.status || "UNKNOWN";
+    bias.style.color =
+      item?.marketBias === "BULLISH" ? "#4ade80" :
+      item?.marketBias === "BEARISH" ? "#fb7185" :
+      "#94a3b8";
+
+    heading.append(name, bias);
+    row.appendChild(heading);
+
+    const strategies = item?.strategies || [];
+
+    const details = document.createElement("div");
+    details.style.cssText =
+      "margin-top:5px;color:#cbd5e1;line-height:1.6;";
+
+    details.textContent = strategies.length
+      ? strategies.map(s =>
+          `${s.strategy || "Strategy"}: ${s.direction || "—"} (${s.score ?? "—"})`
+        ).join(" · ")
+      : "No independent strategy signal";
+
+    row.appendChild(details);
+    timeframeBox.appendChild(row);
+  }
+
+} else {
+  longCount.textContent = "—";
+  shortCount.textContent = "—";
+  longDetails.textContent = "Confluence data unavailable";
+  shortDetails.textContent = "Confluence data unavailable";
+  dominant.textContent = "—";
+  conflict.textContent = "—";
+  fiveMinute.textContent = "—";
+  timeframeBox.textContent =
+    "API response does not contain confluence data.";
+}
 
         const format = value =>
           Number.isFinite(Number(value)) && value != null
